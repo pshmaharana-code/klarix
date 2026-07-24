@@ -8,6 +8,9 @@ import ScrollyTellingBackground from '../components/ScrollyTellingBackground.vue
   <div class="relative w-full text-white font-body selection:bg-indigo-500/30">
     <!-- Scrollytelling Background -->
     <ScrollyTellingBackground />
+    
+    <!-- Background Dimming Overlay for Readability -->
+    <div class="fixed inset-0 bg-black/60 pointer-events-none z-[1]"></div>
 
     <!-- Navbar -->
     <NavBar />
@@ -17,9 +20,9 @@ import ScrollyTellingBackground from '../components/ScrollyTellingBackground.vue
       
       <!-- HERO SECTION -->
       <section class="h-[120vh] flex flex-col items-center justify-center text-center px-4">
-        <h1 class="text-6xl md:text-8xl font-bold font-display tracking-tight leading-tight max-w-4xl mx-auto drop-shadow-2xl">
-          Stop guessing why your <br/>
-          <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">posts aren't growing.</span>
+        <h1 class="text-6xl md:text-8xl font-bold font-display tracking-tight uppercase leading-tight max-w-4xl mx-auto drop-shadow-2xl">
+          <span class="text-red-500">Stop</span> guessing why your <br/>
+          posts <span class="text-red-500">aren't growing.</span>
         </h1>
         
         <p class="mt-8 text-xl text-gray-300 max-w-2xl mx-auto drop-shadow-lg">
@@ -40,7 +43,7 @@ import ScrollyTellingBackground from '../components/ScrollyTellingBackground.vue
       <section class="h-[120vh] flex flex-col items-center justify-center px-4">
         <div class="max-w-4xl mx-auto grid md:grid-cols-2 gap-16 items-center">
           <div class="text-left">
-            <h2 class="text-5xl md:text-6xl font-display font-bold mb-6 text-white leading-tight">
+            <h2 class="text-5xl md:text-6xl font-display font-bold mb-6 text-white leading-tight uppercase tracking-tight">
               You post.<br/>
               <span class="text-red-400">You guess.</span><br/>
               You repeat.
@@ -57,7 +60,7 @@ import ScrollyTellingBackground from '../components/ScrollyTellingBackground.vue
       <!-- HOW IT WORKS -->
       <section class="h-[150vh] flex flex-col items-center justify-center px-4">
         <div class="max-w-6xl mx-auto w-full">
-          <h2 class="text-4xl md:text-5xl font-display font-bold text-center mb-24">How it works</h2>
+          <h2 class="text-4xl md:text-5xl font-display font-bold text-center mb-24 uppercase tracking-tight">How it works</h2>
           
           <div class="grid md:grid-cols-3 gap-8">
             <div class="p-8 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 hover:bg-white/10 transition-colors">
@@ -85,7 +88,7 @@ import ScrollyTellingBackground from '../components/ScrollyTellingBackground.vue
       <section class="h-[100vh] flex flex-col items-center justify-center px-4 text-center">
         <div class="max-w-4xl w-full p-[1px] bg-gradient-to-b from-white/20 to-transparent rounded-3xl mx-auto">
           <div class="bg-black/40 backdrop-blur-xl p-12 rounded-3xl border border-white/10 shadow-2xl">
-            <h2 class="text-3xl font-display font-bold mb-6">See exactly what Klarix produces.</h2>
+            <h2 class="text-3xl font-display font-bold mb-6 uppercase tracking-tight">See exactly what Klarix produces.</h2>
             <p class="text-gray-400 text-lg mb-10">We ran a real founder's post through the 3-agent pipeline.</p>
             <RouterLink 
               to="/demo" 
@@ -99,7 +102,8 @@ import ScrollyTellingBackground from '../components/ScrollyTellingBackground.vue
 
       <!-- FOOTER -->
       <footer class="h-[50vh] flex flex-col items-center justify-end pb-12 px-4 text-center">
-        <div class="border-t border-white/10 pt-12 w-full max-w-4xl text-sm text-gray-500">
+        <div class="border-t border-white/10 pt-12 w-full max-w-4xl flex flex-col items-center text-sm text-gray-500">
+          <img src="/brand_logo.jpeg" alt="Klarix Logo" class="h-8 w-auto object-contain mb-6 opacity-60 hover:opacity-100 transition-opacity" />
           <p class="mb-4 text-gray-400">Built by @piyush._maharana</p>
           <p class="mb-6">IIT Madras &middot; Data Science & AI</p>
           <div class="flex items-center justify-center gap-6">

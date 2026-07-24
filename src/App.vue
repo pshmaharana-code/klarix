@@ -2,7 +2,7 @@
 </script>
 
 <template>
-  <div class="min-h-screen bg-[var(--color-background)] text-[var(--color-text-primary)]">
+  <div class="min-h-screen text-[var(--color-text-primary)]">
     <router-view />
   </div>
 </template>
