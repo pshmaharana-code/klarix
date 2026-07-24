@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: 'Victory Striker';
+  src: url('/VictoryStriker.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 @theme {
   --color-background: #0A0A0F;
   --color-surface: #13131A;
@@ -12,7 +20,7 @@
   --color-strategy: #3B82F6;
   --color-script: #A855F7;
 
-  --font-display: "Space Grotesk", sans-serif;
+  --font-display: "Victory Striker", "Bebas Neue", sans-serif;
   --font-body: "Inter", sans-serif;
   --font-mono: "JetBrains Mono", monospace;
 }
@@ -23,8 +31,15 @@ body {
   font-family: var(--font-body);
   margin: 0;
   padding: 0;
+  letter-spacing: 0.01em;
 }
 
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   font-family: var(--font-display);
+  letter-spacing: 0.02em;
 }
