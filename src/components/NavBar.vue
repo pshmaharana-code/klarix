@@ -1,9 +1,18 @@
 <script setup>
+import { ref, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
+
+const isLoaded = ref(false)
+onMounted(() => {
+  setTimeout(() => { isLoaded.value = true }, 80)
+})
 </script>
 
 <template>
-  <div class="fixed top-0 w-full z-50 flex justify-center pt-6 px-4 pointer-events-none">
+  <div 
+    class="fixed top-0 w-full z-50 flex justify-center pt-6 px-4 pointer-events-none transition-all duration-[900ms] ease-[cubic-bezier(0.16,1,0.3,1)]"
+    :class="isLoaded ? 'translate-y-0 opacity-100' : '-translate-y-28 opacity-0'"
+  >
     <nav 
       class="flex items-center justify-between w-full max-w-6xl px-6 py-3.5 rounded-full backdrop-blur-xl border pointer-events-auto shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:shadow-[0_12px_35px_rgba(0,0,0,0.2),_inset_0_0_25px_rgba(99,102,241,0.4),_inset_0_0_10px_rgba(168,85,247,0.35)] hover:border-indigo-500/50 transition-all duration-500 ease-out"
       style="background-color: var(--navbar-bg, rgba(255, 255, 255, 0.82)); border-color: var(--card-border, rgba(226, 232, 240, 0.8));"

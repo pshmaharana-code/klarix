@@ -1,8 +1,14 @@
 <script setup>
+import { ref, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import ScrollyTellingBackground from '../components/ScrollyTellingBackground.vue'
 import SvgBackground from '../components/SvgBackground.vue'
+
+const isLoaded = ref(false)
+onMounted(() => {
+  setTimeout(() => { isLoaded.value = true }, 150)
+})
 </script>
 
 <template>
@@ -25,7 +31,8 @@ import SvgBackground from '../components/SvgBackground.vue'
       <!-- HERO SECTION -->
       <section class="min-h-[95vh] flex flex-col justify-center pt-28 md:pt-36 pb-20 w-full lg:w-[56%] text-center lg:text-left items-center lg:items-start">
         <h1 
-          class="text-5xl sm:text-6xl md:text-7xl lg:text-[4.5rem] xl:text-[5rem] font-extrabold font-display tracking-[-0.04em] leading-[1.08] mb-6 drop-shadow-sm transition-colors duration-300"
+          class="text-5xl sm:text-6xl md:text-7xl lg:text-[4.5rem] xl:text-[5rem] font-extrabold font-display tracking-[-0.04em] leading-[1.08] mb-6 drop-shadow-sm transition-all duration-[900ms] ease-[cubic-bezier(0.16,1,0.3,1)]"
+          :class="isLoaded ? 'translate-x-0 opacity-100' : '-translate-x-32 sm:-translate-x-64 opacity-0'"
           style="color: var(--text-primary, #0F172A);"
         >
           Stop guessing why your <br class="hidden sm:inline"/>
@@ -33,13 +40,17 @@ import SvgBackground from '../components/SvgBackground.vue'
         </h1>
         
         <p 
-          class="mt-2 text-lg sm:text-xl md:text-2xl font-normal tracking-[-0.015em] max-w-xl leading-relaxed transition-colors duration-300"
+          class="mt-2 text-lg sm:text-xl md:text-2xl font-normal tracking-[-0.015em] max-w-xl leading-relaxed transition-all duration-[900ms] delay-[150ms] ease-[cubic-bezier(0.16,1,0.3,1)]"
+          :class="isLoaded ? 'translate-x-0 opacity-100' : '-translate-x-24 sm:-translate-x-48 opacity-0'"
           style="color: var(--text-secondary, #475569);"
         >
           Upload your content. Paste your stats. Klarix tells you exactly what to fix &mdash; and writes your next post.
         </p>
 
-        <div class="mt-10 mb-12">
+        <div 
+          class="mt-10 mb-12 transition-all duration-[900ms] delay-[300ms] ease-[cubic-bezier(0.16,1,0.3,1)]"
+          :class="isLoaded ? 'translate-y-0 opacity-100' : 'translate-y-24 opacity-0'"
+        >
           <RouterLink 
             to="/analyse" 
             class="group relative inline-flex items-center justify-center px-9 py-4 text-lg font-semibold tracking-tight text-white transition-all duration-300 bg-indigo-600 rounded-full shadow-[0_12px_30px_rgba(79,70,229,0.3)] hover:bg-indigo-500 hover:shadow-[0_16px_38px_rgba(79,70,229,0.4)] hover:-translate-y-0.5 active:translate-y-0"

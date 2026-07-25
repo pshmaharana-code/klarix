@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 
 const canvasRef = ref(null)
 const scrollFraction = ref(0)
+const isLoaded = ref(false)
 const frameCount = 300
 const images = []
 let currentFrame = 1
@@ -88,6 +89,8 @@ onMounted(() => {
   preloadImages()
   handleScroll()
   
+  setTimeout(() => { isLoaded.value = true }, 250)
+
   window.addEventListener('scroll', handleScroll, { passive: true })
   window.addEventListener('resize', handleResize)
 })
@@ -101,9 +104,10 @@ onUnmounted(() => {
 <template>
   <!-- Frosted Glass Bezel Card with Reactive Scroll Parallax & Zero-Gravity Motion -->
   <div 
-    class="fixed right-6 lg:right-10 xl:right-16 top-1/2 w-[340px] lg:w-[420px] xl:w-[480px] 2xl:w-[520px] z-[5] pointer-events-none transition-all duration-300 hidden lg:block select-none"
+    class="fixed right-6 lg:right-10 xl:right-16 top-1/2 w-[340px] lg:w-[420px] xl:w-[480px] 2xl:w-[520px] z-[5] pointer-events-none hidden lg:block select-none transition-all duration-[1100ms] ease-[cubic-bezier(0.16,1,0.3,1)]"
+    :class="isLoaded ? 'opacity-100' : 'opacity-0'"
     :style="{
-      transform: `translateY(calc(-50% + ${Math.sin(scrollFraction * Math.PI * 2) * 45}px)) rotate(${Math.cos(scrollFraction * Math.PI * 1.5) * -3}deg)`
+      transform: `translateX(${isLoaded ? '0px' : '130%'}) translateY(calc(-50% + ${Math.sin(scrollFraction * Math.PI * 2) * 45}px)) rotate(${Math.cos(scrollFraction * Math.PI * 1.5) * -3}deg)`
     }"
   >
     <div 
