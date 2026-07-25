@@ -222,7 +222,7 @@ onMounted(() => {
             <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2.5">
               <span class="font-display font-bold text-xl text-white tracking-[-0.035em]">Klarix</span>
               <span class="hidden sm:inline text-slate-600 font-bold">&middot;</span>
-              <span class="text-xs font-semibold text-indigo-400">Built by @piyush._maharana (IIT Madras)</span>
+              <span class="text-xs font-semibold text-indigo-400">Built by Piyush Maharana | IIT Madras</span>
             </div>
           </div>
 
