@@ -1,28 +1,24 @@
 @import "tailwindcss";
 
-@font-face {
-  font-family: 'Victory Striker';
-  src: url('/VictoryStriker.ttf') format('truetype');
-  font-weight: normal;
-  font-style: normal;
-  font-display: swap;
+@theme {
+  --color-background: #F0F4F8;
+  --color-surface: #FFFFFF;
+  --color-border: #E2E8F0;
+  --color-text-primary: #0F172A;
+  --color-text-secondary: #475569;
+  --color-accent: #3B82F6;
+  --color-success: #10B981;
+  --color-error: #EF4444;
+  --color-strategy: #2563EB;
+  --color-script: #8B5CF6;
+
+  --font-display: "Plus Jakarta Sans", "Outfit", sans-serif;
+  --font-body: "Plus Jakarta Sans", "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
 }
 
-@theme {
-  --color-background: #0A0A0F;
-  --color-surface: #13131A;
-  --color-border: #1E1E2E;
-  --color-text-primary: #FFFFFF;
-  --color-text-secondary: #888899;
-  --color-accent: #6366F1;
-  --color-success: #22C55E;
-  --color-error: #EF4444;
-  --color-strategy: #3B82F6;
-  --color-script: #A855F7;
-
-  --font-display: "Victory Striker", "Bebas Neue", sans-serif;
-  --font-body: "Inter", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+html {
+  scroll-behavior: smooth;
 }
 
 body {
@@ -31,7 +27,8 @@ body {
   font-family: var(--font-body);
   margin: 0;
   padding: 0;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.015em;
+  overflow-x: hidden;
 }
 
 h1,
@@ -41,5 +38,6 @@ h4,
 h5,
 h6 {
   font-family: var(--font-display);
-  letter-spacing: 0.02em;
+  letter-spacing: -0.035em;
+  font-weight: 800;
 }

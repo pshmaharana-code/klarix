@@ -4,27 +4,46 @@ import { RouterLink } from 'vue-router'
 
 <template>
   <div class="fixed top-0 w-full z-50 flex justify-center pt-6 px-4 pointer-events-none">
-    <nav class="flex items-center justify-between w-full max-w-5xl px-6 py-3 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 pointer-events-auto shadow-2xl">
-      <!-- Logo -->
-      <RouterLink to="/" class="flex items-center">
-        <img src="/brand_logo.jpeg" alt="Klarix Logo" class="h-8 w-auto object-contain" />
+    <nav 
+      class="flex items-center justify-between w-full max-w-6xl px-6 py-3.5 rounded-full backdrop-blur-xl border pointer-events-auto shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:shadow-[0_12px_35px_rgba(0,0,0,0.2),_inset_0_0_25px_rgba(99,102,241,0.4),_inset_0_0_10px_rgba(168,85,247,0.35)] hover:border-indigo-500/50 transition-all duration-500 ease-out"
+      style="background-color: var(--navbar-bg, rgba(255, 255, 255, 0.82)); border-color: var(--card-border, rgba(226, 232, 240, 0.8));"
+    >
+      <!-- Logo & Brand Text -->
+      <RouterLink to="/" class="flex items-center gap-2.5">
+        <img src="/brand_logo.jpeg" alt="Klarix Logo" class="h-8 w-auto object-contain rounded-lg shadow-sm" />
+        <span class="font-display font-bold text-xl tracking-[-0.035em] transition-colors duration-300" style="color: var(--text-primary, #0F172A);">Klarix</span>
       </RouterLink>
       
-      <!-- Center Links -->
-      <div class="hidden md:flex items-center gap-8 text-sm font-medium text-gray-300">
-        <RouterLink to="/" class="hover:text-white transition-colors">Home</RouterLink>
-        <a href="#about" class="hover:text-white transition-colors">About</a>
-        <a href="#curriculum" class="hover:text-white transition-colors">Curriculum</a>
-        <a href="#pricing" class="hover:text-white transition-colors">Pricing</a>
-        <a href="#faqs" class="hover:text-white transition-colors">FAQs</a>
+      <!-- Central Architectural Navigation Links -->
+      <div class="hidden md:flex items-center gap-7 lg:gap-9 text-sm font-semibold tracking-tight">
+        <a 
+          href="#why-klarix" 
+          class="relative py-1 transition-colors duration-200 hover:text-indigo-500 after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[2px] after:bg-indigo-500 hover:after:w-full after:transition-all after:duration-300"
+          style="color: var(--text-primary, #0F172A);"
+        >Why Klarix</a>
+        <a 
+          href="#how-it-works" 
+          class="relative py-1 transition-colors duration-200 hover:text-indigo-500 after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[2px] after:bg-indigo-500 hover:after:w-full after:transition-all after:duration-300"
+          style="color: var(--text-primary, #0F172A);"
+        >How It Works</a>
+        <a 
+          href="#diagnostic-pipeline" 
+          class="relative py-1 transition-colors duration-200 hover:text-indigo-500 after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[2px] after:bg-indigo-500 hover:after:w-full after:transition-all after:duration-300"
+          style="color: var(--text-primary, #0F172A);"
+        >Flow Pipeline</a>
+        <a 
+          href="#social-proof" 
+          class="relative py-1 transition-colors duration-200 hover:text-indigo-500 after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[2px] after:bg-indigo-500 hover:after:w-full after:transition-all after:duration-300"
+          style="color: var(--text-primary, #0F172A);"
+        >Social Proof</a>
       </div>
-      
+
       <!-- CTA Button -->
       <RouterLink 
         to="/analyse" 
-        class="px-6 py-2 rounded-full bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors"
+        class="px-6 py-2.5 rounded-full bg-indigo-600 text-white text-sm font-semibold tracking-tight hover:bg-indigo-500 shadow-md transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
       >
-        Try Free →
+        Try Free &rarr;
       </RouterLink>
     </nav>
   </div>
