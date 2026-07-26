@@ -1,11 +1,10 @@
-const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1/chat/completions'
 
-// Direct Google Gemini Models (Primary Engine - 30x more free usage)
-const DIRECT_GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite-001', 'gemini-2.0-flash-001', 'gemini-2.5-flash']
+// 1. Primary Model: routed through OpenRouter for native multimodal visual reasoning & structured message precision
+const PRIMARY_MODEL   = 'google/gemini-2.5-flash'
 
-// Standby Emergency Fallback (Text-Only via OpenRouter)
-const FALLBACK_MODEL = 'meta-llama/llama-3.3-70b-instruct'
+// 2. Automated Fallback Model: seamlessly catches temporary throttles without interrupting the user experience
+const FALLBACK_MODEL  = 'meta-llama/llama-3.3-70b-instruct'
 
 /**
  * Converts File to Base64 (stripping the data:...;base64, prefix)
@@ -20,174 +19,74 @@ export function fileToBase64(file) {
 }
 
 /**
- * Core AI Agent Execution Engine
- * Priortizes Direct Google Gemini AI Studio endpoints for high-speed multimodal analysis.
- * Automatically guarantees Gemini completion without triggering text-only OpenRouter fallback unless an outage occurs.
+ * Core AI Agent Execution Engine via OpenRouter Gateway
+ * Structures system instructions and multimodal array blocks according to OpenRouter's exact message specification.
  */
-export async function callAgent(systemPrompt, userMessage, useVision = false, retryCount = 0) {
-  const geminiKey = import.meta.env.VITE_GEMINI_API_KEY
-  const openRouterKey = import.meta.env.VITE_OPENROUTER_API_KEY
+export async function callAgent(systemPrompt, userMessage, useVision = false, useFallback = false) {
+  const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY
 
-  if (!geminiKey && !openRouterKey) {
-    throw new Error("API key not configured. Please add your Gemini or OpenRouter API key to the frontend/.env file.")
+  if (!apiKey) {
+    throw new Error("OpenRouter API key not configured. Add VITE_OPENROUTER_API_KEY to your frontend/.env file.")
   }
 
-  // --- PARSE USER MESSAGE TO EXTRACT TEXT AND MULTIMEDIA INLINE DATA ---
-  let promptText = ""
-  const inlineMediaParts = []
+  const model = useFallback ? FALLBACK_MODEL : PRIMARY_MODEL
 
-  if (Array.isArray(userMessage)) {
-    for (const item of userMessage) {
-      if (item.type === 'text') {
-        promptText += item.text + " "
-      } else if (item.type === 'image_url' && item.image_url?.url) {
-        // Extract exact MIME type and raw base64 string from Data URL
-        const matches = item.image_url.url.match(/^data:([^;]+);base64,(.+)$/)
-        if (matches) {
-          inlineMediaParts.push({
-            inline_data: {
-              mime_type: matches[1], // e.g., 'video/mp4' or 'image/jpeg'
-              data: matches[2]
-            }
-          })
-        }
-      }
-    }
-  } else {
-    promptText = String(userMessage)
+  // Format message content appropriately for vision vs text fallback models
+  let formattedContent = userMessage
+  if (useFallback && Array.isArray(userMessage)) {
+    // If falling back to Llama text reasoning model, strip Base64 image arrays and preserve analytical instruction text
+    formattedContent = userMessage
+      .filter(item => item.type === 'text')
+      .map(item => item.text)
+      .join(' ')
   }
 
-// Circuit breaker flag to prevent flooding DevTools with red errors when Google Free Tier hits a Quota (429) wall
-let googleQuotaCooldownUntil = 0
-
-// =========================================================================
-// PRIMARY ENGINE: DIRECT GOOGLE GEMINI API (NO OPENROUTER ROUTING)
-// =========================================================================
-if (geminiKey && retryCount < DIRECT_GEMINI_MODELS.length && Date.now() > googleQuotaCooldownUntil) {
-  const targetModel = DIRECT_GEMINI_MODELS[retryCount]
-  const url = `${GEMINI_API_BASE}/${targetModel}:generateContent?key=${geminiKey}`
+  console.log(`[Klarix Engine] Executing agent via OpenRouter Gateway (${model})...`)
 
   try {
-    console.log(`[Klarix Direct Engine] Executing agent via direct Google Gemini endpoint: ${targetModel}...`)
-    
-    // Architect structured multi-part context payload for peak multimodal depth and frame-by-frame visual resolution
-    const contentsParts = [
-      {
-        text: `### CORE SYSTEM INSTRUCTION & AGENT ARCHITECTURE ###\n${systemPrompt}\n\n### MULTIMEDIA INGESTION & ANALYTICAL MANDATE ###\nPerform exhaustive diagnostic evaluation on all assets and metrics provided below:`
-      }
-    ]
-
-    // Wrap media chunks with contextual framing labels so Gemini conducts granular frame and typography breakdowns
-    if (useVision && inlineMediaParts.length > 0) {
-      inlineMediaParts.forEach((part, idx) => {
-        contentsParts.push({ 
-          text: `\n[--- MEDIA ASSET #${idx + 1} (${part.inline_data.mime_type.toUpperCase()}): DEEP FRAME-BY-FRAME VISUAL, TYPOGRAPHY & TRANSCRIPT EXTRACTION ---]` 
-        })
-        contentsParts.push(part)
-      })
-    }
-
-    contentsParts.push({ 
-      text: `\n\n### SPECIFIC TASK EXECUTION DIRECTIVES ###\n${promptText.trim()}\n\nCRITICAL QUALITY ENFORCEMENT:\n1. Provide comprehensive, exhaustive depth in your analytical fields. Never use brief, vague, or summary sentences.\n2. In visual and transcript fields, cite precise observable visual details (lighting, text placement, color contrasts, founder emotion) and exact speech wording.\n3. Return STRICTLY the specified JSON schema without any surrounding text or markdown formatting.` 
-    })
-
-    const response = await fetch(url, {
+    const response = await fetch(OPENROUTER_BASE, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://klarix.ai',
+        'X-Title': 'Klarix',
+      },
       body: JSON.stringify({
-        system_instruction: {
-          parts: [{ text: systemPrompt }]
-        },
-        contents: [
-          {
-            role: 'user',
-            parts: contentsParts
-          }
+        model: model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user',   content: formattedContent }
         ],
-        generationConfig: {
-          response_mime_type: 'application/json',
-          temperature: 0.7,
-          top_p: 0.95,
-          max_output_tokens: 8192
-        }
+        max_tokens: 4000,
+        temperature: 0.5,
+        response_format: { type: 'json_object' }
       })
     })
 
     if (!response.ok) {
       const errJson = await response.json().catch(() => ({}))
-      const errDesc = errJson?.error?.message || response.statusText || `HTTP ${response.status}`
-      console.warn(`[Klarix Direct Engine] Gemini model (${targetModel}) encountered issue (${response.status}): ${errDesc}`)
-      
-      // If Google Free Tier reports 429 (Quota Exceeded), open circuit breaker for 60 seconds and switch cleanly to OpenRouter
-      if (response.status === 429) {
-        console.warn("[Klarix Circuit Breaker] Google Free Tier quota reached. Bypassing further Direct Gemini calls for 60 seconds...")
-        googleQuotaCooldownUntil = Date.now() + 60000
-        throw new Error("QUOTA_EXCEEDED")
-      }
-
-      // If a specific model returns a temporary syntax or version error (e.g. 404), step to alternate Google model
-      return await callAgent(systemPrompt, userMessage, useVision, retryCount + 1)
+      const errDesc = errJson?.error?.message || errJson?.error || response.statusText || `HTTP ${response.status}`
+      throw new Error(`OpenRouter API rejected request (${response.status}): ${typeof errDesc === 'string' ? errDesc : JSON.stringify(errDesc)}`)
     }
 
-      const data = await response.json()
-      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-      if (!rawText) {
-        throw new Error("Direct Gemini returned empty candidates array.")
-      }
-
-      const cleaned = rawText.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim()
-      return JSON.parse(cleaned)
-
-    } catch (directGeminiError) {
-      console.warn(`[Klarix Direct Engine] Attempt ${targetModel} failed: ${directGeminiError.message}.`)
-      // Only attempt alternative Direct Google models if the issue was not quota exhaustion
-      if (directGeminiError.message !== "QUOTA_EXCEEDED" && retryCount + 1 < DIRECT_GEMINI_MODELS.length) {
-        return await callAgent(systemPrompt, userMessage, useVision, retryCount + 1)
-      }
-      console.error("[Klarix Direct Engine] Direct Google Gemini attempt finalized or throttled. Executing OpenRouter standby...")
+    const data = await response.json()
+    const rawText = data?.choices?.[0]?.message?.content || ''
+    if (!rawText) {
+      throw new Error("OpenRouter returned empty content response.")
     }
+
+    const cleaned = rawText.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim()
+    return JSON.parse(cleaned)
+
+  } catch (error) {
+    if (!useFallback) {
+      console.warn(`[Klarix Engine] Primary model (${PRIMARY_MODEL}) failed: ${error.message}. Switching seamlessly to automated Llama 3.3 fallback...`)
+      return await callAgent(systemPrompt, userMessage, useVision, true)
+    }
+    console.error(`[Klarix Engine] Both primary and fallback OpenRouter executions failed:`, error)
+    throw error
   }
-
-  // =========================================================================
-  // EMERGENCY STANDBY FALLBACK: OPENROUTER KEY (TEXT-ONLY IF GEMINI FAILS)
-  // =========================================================================
-  console.warn(`[Klarix Standby Engine] Activating emergency text-only OpenRouter routing using ${FALLBACK_MODEL}...`)
-  
-  if (!openRouterKey) {
-    throw new Error("Direct Gemini API failed and no OpenRouter fallback key was provided in .env.")
-  }
-
-  const response = await fetch(OPENROUTER_BASE, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${openRouterKey}`,
-      'HTTP-Referer': 'https://klarix.ai',
-      'X-Title': 'Klarix',
-    },
-    body: JSON.stringify({
-      model: FALLBACK_MODEL,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user',   content: promptText.trim() } // Standby fallback is strict text-only
-      ],
-      max_tokens: 2500,
-      temperature: 0.4,
-      response_format: { type: 'json_object' }
-    })
-  })
-
-  if (!response.ok) {
-    const errJson = await response.json().catch(() => ({}))
-    const errMsg = errJson?.error?.message || errJson?.error || response.statusText || `HTTP ${response.status}`
-    throw new Error(`Analysis failed: ${typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg)}`)
-  }
-
-  const data = await response.json()
-  const rawText = data?.choices?.[0]?.message?.content || ''
-  const cleaned = rawText.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim()
-  
-  return JSON.parse(cleaned)
 }
 
 // --- AGENT SYSTEM PROMPTS ---

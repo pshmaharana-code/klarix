@@ -240,11 +240,13 @@ const runAnalysis = async () => {
       brandContext: brandInfo,
       contentType: contentType.value,
       platform: platform.value,
+      visualInstructions: "Observe all attached original carousel slides or video frames to pinpoint precise layout and copywriting competitor gaps.",
       trendSearchRequest: `Current 2025 short-form performance patterns and competitor gaps for creator in niche: "${brandInfo}"`
     })
 
-    // Execute via fast lightweight text completion without duplicating media payload
-    const res2 = await callAgent(AGENT_2_PROMPT, strategyPromptText, false)
+    // Route original media slides cleanly to Agent 2 via OpenRouter Gateway
+    const userMessageAgent2 = isVision ? [...mediaObjects, { type: 'text', text: strategyPromptText }] : strategyPromptText
+    const res2 = await callAgent(AGENT_2_PROMPT, userMessageAgent2, isVision)
     strategy.value = res2 // Second card renders instantly!
 
     // --- AGENT 3: SCRIPTWRITER / CAROUSEL COPYWRITER ---
@@ -256,11 +258,12 @@ const runAnalysis = async () => {
       strategicDirection: res2,
       creatorOriginalTranscript: creatorTranscript,
       brandContext: brandInfo,
-      copyInstructions: "Match the brand's exact speaking style and vocabulary while repairing all drop-off weak points identified by Agent 1."
+      visualInstructions: "Examine the attached original carousel slide images or video frames. Match the brand's typographic voice while repairing all drop-off weak points identified by Agent 1."
     })
 
-    // Execute via fast lightweight text completion
-    const res3 = await callAgent(AGENT_3_PROMPT, scriptPromptText, false)
+    // Route original media slides cleanly to Agent 3 via OpenRouter Gateway
+    const userMessageAgent3 = isVision ? [...mediaObjects, { type: 'text', text: scriptPromptText }] : scriptPromptText
+    const res3 = await callAgent(AGENT_3_PROMPT, userMessageAgent3, isVision)
     script.value = res3
 
     // ALL AGENTS COMPLETE!
