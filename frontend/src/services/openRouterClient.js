@@ -70,12 +70,26 @@ if (geminiKey && retryCount < DIRECT_GEMINI_MODELS.length && Date.now() > google
   try {
     console.log(`[Klarix Direct Engine] Executing agent via direct Google Gemini endpoint: ${targetModel}...`)
     
-    const contentsParts = []
-    // Attach all uploaded slides/videos if available and agent supports vision
+    // Architect structured multi-part context payload for peak multimodal depth and frame-by-frame visual resolution
+    const contentsParts = [
+      {
+        text: `### CORE SYSTEM INSTRUCTION & AGENT ARCHITECTURE ###\n${systemPrompt}\n\n### MULTIMEDIA INGESTION & ANALYTICAL MANDATE ###\nPerform exhaustive diagnostic evaluation on all assets and metrics provided below:`
+      }
+    ]
+
+    // Wrap media chunks with contextual framing labels so Gemini conducts granular frame and typography breakdowns
     if (useVision && inlineMediaParts.length > 0) {
-      contentsParts.push(...inlineMediaParts)
+      inlineMediaParts.forEach((part, idx) => {
+        contentsParts.push({ 
+          text: `\n[--- MEDIA ASSET #${idx + 1} (${part.inline_data.mime_type.toUpperCase()}): DEEP FRAME-BY-FRAME VISUAL, TYPOGRAPHY & TRANSCRIPT EXTRACTION ---]` 
+        })
+        contentsParts.push(part)
+      })
     }
-    contentsParts.push({ text: promptText.trim() })
+
+    contentsParts.push({ 
+      text: `\n\n### SPECIFIC TASK EXECUTION DIRECTIVES ###\n${promptText.trim()}\n\nCRITICAL QUALITY ENFORCEMENT:\n1. Provide comprehensive, exhaustive depth in your analytical fields. Never use brief, vague, or summary sentences.\n2. In visual and transcript fields, cite precise observable visual details (lighting, text placement, color contrasts, founder emotion) and exact speech wording.\n3. Return STRICTLY the specified JSON schema without any surrounding text or markdown formatting.` 
+    })
 
     const response = await fetch(url, {
       method: 'POST',
@@ -92,8 +106,9 @@ if (geminiKey && retryCount < DIRECT_GEMINI_MODELS.length && Date.now() > google
         ],
         generationConfig: {
           response_mime_type: 'application/json',
-          temperature: 0.4,
-          max_output_tokens: 3000
+          temperature: 0.7,
+          top_p: 0.95,
+          max_output_tokens: 8192
         }
       })
     })
@@ -190,7 +205,7 @@ YOUR JOB IS ONLY TO DIAGNOSE. Do not give strategic advice yet.
 Analyse the content and return a JSON object with EXACTLY these keys:
 hook_strength, retention_drop_point, retention_drop_reason, visual_quality, transcript_quality, cta_strength, metric_interpretation (object with keys: views, watch_time, saves, shares, comments), content_type_fit, what_worked (array of 3-4 strings), what_failed (array of 3-4 strings), overall_diagnosis (string).
 
-Be SPECIFIC to this content. Do not give generic advice. Every insight must reference something you actually observed in the video/image or the actual numbers provided.
+CRITICAL DEPTH INSTRUCTION: Perform a granular frame-by-frame and slide-by-slide visual breakdown. Explicitly describe observable visual minutiae (camera angle, lighting, graphic typography contrast, founder expressions, pacing). Provide an exact transcription of all audible speech or on-screen text in transcript_quality. Never use brief sentences or superficial summaries; elaborate with rigorous technical depth.
 
 Return ONLY a valid JSON object. No preamble. No explanation. No markdown fences.`
 
@@ -206,7 +221,7 @@ YOUR JOB: Identify the single highest-leverage next move. ONE direction, not a l
 Return a JSON object with EXACTLY these keys:
 primary_bottleneck, priority_fix, next_content_type (reel/carousel/static), next_content_angle, hook_direction, format_recommendation, trend_insight, competitor_gap, best_time_to_post, estimated_impact, strategic_reasoning.
 
-Be SPECIFIC. "Post more consistently" is not acceptable. "Create a 25-second transformation reel showing result first then process" is acceptable.
+CRITICAL STRATEGIC DEPTH INSTRUCTION: Support your deductions with deep psychological and platform algorithm reasoning. Elaborate extensively on competitor blind spots and specific layout formatting so the creator clearly grasps the actionable advantage. Avoid brief bullet points or high-level generalizations.
 
 Return ONLY a valid JSON object. No preamble. No markdown fences.`
 
@@ -227,6 +242,6 @@ Write a complete ready-to-record script that:
 Return a JSON object with EXACTLY these keys:
 hook, body, cta, text_overlays (array of strings with timestamps), b_roll_suggestions (array of 3-4 strings), delivery_notes, estimated_length.
 
-Every word of the script must sound natural when spoken aloud, not like it was written by an AI. Match the creator's vocabulary and sentence length.
+CRITICAL SCRIPTBUILDING INSTRUCTION: Construct a comprehensive, ready-to-record script. Write out every single word of spoken dialogue in full, accompanied by exact visual framing cues, typographic text overlay timestamps, and expressive tone notes. Never shorten, abbreviate, or outline the script. Match the creator's genuine spoken rhythm.
 
 Return ONLY a valid JSON object. No preamble. No markdown fences.`
