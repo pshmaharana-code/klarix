@@ -4,8 +4,8 @@
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models'
 
 // CORRECT model names that actually exist on v1beta endpoint
-const GEMINI_PRIMARY_MODEL   = 'gemini-2.5-flash-preview-05-20'  // latest stable with vision
-const GEMINI_FALLBACK_MODEL  = 'gemini-2.0-flash'                 // proven stable, vision capable
+const GEMINI_PRIMARY_MODEL   = 'gemini-1.5-flash'  // extremely fast, multimodal, native vision
+const GEMINI_FALLBACK_MODEL  = 'gemini-1.5-pro'    // higher reasoning, slightly slower fallback
 
 /**
  * Converts File to Base64
