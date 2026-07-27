@@ -1,10 +1,11 @@
+// Direct Google AI Studio API Endpoint Base
+const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models'
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1/chat/completions'
 
-// 1. Primary Model: routed through OpenRouter for native multimodal visual reasoning & structured message precision
-const PRIMARY_MODEL   = 'google/gemini-2.5-flash'
-
-// 2. Automated Fallback Model: seamlessly catches temporary throttles without interrupting the user experience
-const FALLBACK_MODEL  = 'meta-llama/llama-3.3-70b-instruct'
+// Primary & Direct Fallback Models (Free high-limit execution via Google AI Studio Key)
+const GEMINI_PRIMARY_MODEL = 'gemini-2.5-flash'
+const GEMINI_FALLBACK_MODEL = 'gemini-2.0-flash'
+const OPENROUTER_STANDBY_MODEL = 'meta-llama/llama-3.3-70b-instruct'
 
 /**
  * Converts File to Base64 (stripping the data:...;base64, prefix)
@@ -19,41 +20,144 @@ export function fileToBase64(file) {
 }
 
 /**
- * Core AI Agent Execution Engine via OpenRouter Gateway
- * Structures system instructions and multimodal array blocks according to OpenRouter's exact message specification.
+ * Core AI Agent Execution Engine
+ * Evaluates visual streams and analytics using Direct Google Gemini with OpenRouter-grade structural packaging.
  */
-export async function callAgent(systemPrompt, userMessage, useVision = false, useFallback = false) {
-  const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY
+export async function callAgent(systemPrompt, userMessage, useVision = false, fallbackStage = 0) {
+  const geminiKey = import.meta.env.VITE_GEMINI_API_KEY
+  const openRouterKey = import.meta.env.VITE_OPENROUTER_API_KEY
 
-  if (!apiKey) {
-    throw new Error("OpenRouter API key not configured. Add VITE_OPENROUTER_API_KEY to your frontend/.env file.")
+  if (!geminiKey && !openRouterKey) {
+    throw new Error("No API keys configured! Add VITE_GEMINI_API_KEY to your frontend/.env file.")
   }
 
-  const model = useFallback ? FALLBACK_MODEL : PRIMARY_MODEL
+  // Stage 0: Direct Google gemini-2.5-flash
+  // Stage 1: Direct Google gemini-2.0-flash
+  // Stage 2: OpenRouter Standby (Llama 3.3 text fallback)
+  const currentModel = fallbackStage === 0 ? GEMINI_PRIMARY_MODEL : (fallbackStage === 1 ? GEMINI_FALLBACK_MODEL : OPENROUTER_STANDBY_MODEL)
 
-  // Format message content appropriately for vision vs text fallback models
+  if (fallbackStage === 0 || fallbackStage === 1) {
+    if (!geminiKey) {
+      console.warn(`[Klarix Engine] No VITE_GEMINI_API_KEY found, jumping to OpenRouter standby...`)
+      return await callAgent(systemPrompt, userMessage, useVision, 2)
+    }
+
+    console.log(`[Klarix Engine] Executing agent directly via Google AI Studio (${currentModel}) with high-fidelity structural formatting...`)
+
+    try {
+      // Structure native Gemini parts with OpenRouter-grade labeling for maximum diagnostic depth
+      const parts = []
+      
+      if (Array.isArray(userMessage)) {
+        let slideIndex = 1
+        for (const item of userMessage) {
+          if (item.type === 'image_url' && item.image_url?.url) {
+            const [meta, b64Data] = item.image_url.url.split(';base64,')
+            const mimeType = meta ? meta.replace('data:', '') : 'image/jpeg'
+            const isVideo = mimeType.startsWith('video/')
+            
+            // Inject structural media framing so Gemini evaluates video frames and Carousel slide progressions accurately
+            parts.push({
+              text: isVideo ? `[ATTACHMENT: Video Reel Audio & Visual Stream]` : `[ATTACHMENT: Carousel Slide / Frame #${slideIndex++}]`
+            })
+            parts.push({
+              inline_data: {
+                mime_type: mimeType,
+                data: b64Data
+              }
+            })
+          } else if (item.type === 'text') {
+            parts.push({
+              text: `\n--- DETAILED TASK & ANALYTICS INSTRUCTIONS ---\n${item.text}\n\nCRITICAL DEPTH MANDATE: Provide an exhaustive, rigorous, high-fidelity analysis. Do not abbreviate or shorten any findings. Provide complete spoken transcripts, explicit frame timestamps, granular layout critiques, and detailed strategic direction.`
+            })
+          }
+        }
+      } else {
+        parts.push({
+          text: `${userMessage}\n\nCRITICAL DEPTH MANDATE: Provide an exhaustive, rigorous, high-fidelity analysis. Do not abbreviate or shorten any findings. Provide complete spoken transcripts, explicit frame timestamps, granular layout critiques, and detailed strategic direction.`
+        })
+      }
+
+      const payload = {
+        system_instruction: {
+          parts: [{ text: systemPrompt }]
+        },
+        contents: [
+          {
+            role: 'user',
+            parts: parts
+          }
+        ],
+        generationConfig: {
+          maxOutputTokens: 8192,
+          temperature: 0.5,
+          responseMimeType: 'application/json'
+        }
+      }
+
+      const response = await fetch(`${GEMINI_BASE_URL}/${currentModel}:generateContent?key=${geminiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      })
+
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}))
+        const errDesc = errJson?.error?.message || errJson?.error || response.statusText || `HTTP ${response.status}`
+        throw new Error(`Google AI Studio API error (${response.status}): ${typeof errDesc === 'string' ? errDesc : JSON.stringify(errDesc)}`)
+      }
+
+      const data = await response.json()
+      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+      if (!rawText) {
+        throw new Error("Direct Gemini returned empty content response.")
+      }
+
+      const cleaned = rawText.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim()
+      try {
+        return JSON.parse(cleaned)
+      } catch (jsonParseError) {
+        console.warn("[Klarix Engine] Direct Gemini JSON parse hiccup, extracting matching braces...", jsonParseError)
+        const match = cleaned.match(/\{[\s\S]*\}/)
+        if (match) {
+          return JSON.parse(match[0])
+        }
+        throw jsonParseError
+      }
+    } catch (error) {
+      console.warn(`[Klarix Engine] Direct Gemini (${currentModel}) execution hiccup: ${error.message}. Shifting cleanly to fallback Stage ${fallbackStage + 1}...`)
+      return await callAgent(systemPrompt, userMessage, useVision, fallbackStage + 1)
+    }
+  }
+
+  // Stage 2: Final Emergency Standby via OpenRouter Gateway
+  if (!openRouterKey) {
+    throw new Error("All Direct Gemini API executions hit limitations, and no VITE_OPENROUTER_API_KEY is configured for emergency standby.")
+  }
+
+  console.log(`[Klarix Engine] Executing emergency standby via OpenRouter Gateway (${OPENROUTER_STANDBY_MODEL})...`)
+
   let formattedContent = userMessage
-  if (useFallback && Array.isArray(userMessage)) {
-    // If falling back to Llama text reasoning model, strip Base64 image arrays and preserve analytical instruction text
+  if (Array.isArray(userMessage)) {
     formattedContent = userMessage
       .filter(item => item.type === 'text')
       .map(item => item.text)
       .join(' ')
   }
 
-  console.log(`[Klarix Engine] Executing agent via OpenRouter Gateway (${model})...`)
-
   try {
     const response = await fetch(OPENROUTER_BASE, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${openRouterKey}`,
         'HTTP-Referer': 'https://klarix.ai',
         'X-Title': 'Klarix',
       },
       body: JSON.stringify({
-        model: model,
+        model: OPENROUTER_STANDBY_MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user',   content: formattedContent }
@@ -67,33 +171,16 @@ export async function callAgent(systemPrompt, userMessage, useVision = false, us
     if (!response.ok) {
       const errJson = await response.json().catch(() => ({}))
       const errDesc = errJson?.error?.message || errJson?.error || response.statusText || `HTTP ${response.status}`
-      throw new Error(`OpenRouter API rejected request (${response.status}): ${typeof errDesc === 'string' ? errDesc : JSON.stringify(errDesc)}`)
+      throw new Error(`OpenRouter Standby error (${response.status}): ${typeof errDesc === 'string' ? errDesc : JSON.stringify(errDesc)}`)
     }
 
     const data = await response.json()
     const rawText = data?.choices?.[0]?.message?.content || ''
-    if (!rawText) {
-      throw new Error("OpenRouter returned empty content response.")
-    }
-
     const cleaned = rawText.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim()
-    try {
-      return JSON.parse(cleaned)
-    } catch (jsonParseError) {
-      console.warn("[Klarix Engine] Direct JSON.parse error, extracting object braces...", jsonParseError)
-      const match = cleaned.match(/\{[\s\S]*\}/)
-      if (match) {
-        return JSON.parse(match[0])
-      }
-      throw jsonParseError
-    }
-
+    const match = cleaned.match(/\{[\s\S]*\}/)
+    return match ? JSON.parse(match[0]) : JSON.parse(cleaned)
   } catch (error) {
-    if (!useFallback) {
-      console.warn(`[Klarix Engine] Primary model (${PRIMARY_MODEL}) failed: ${error.message}. Switching seamlessly to automated Llama 3.3 fallback...`)
-      return await callAgent(systemPrompt, userMessage, useVision, true)
-    }
-    console.error(`[Klarix Engine] Both primary and fallback OpenRouter executions failed:`, error)
+    console.error(`[Klarix Engine] Complete engine failure across all stages:`, error)
     throw error
   }
 }
