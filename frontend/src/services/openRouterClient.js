@@ -4,7 +4,8 @@ const OPENROUTER_BASE = 'https://openrouter.ai/api/v1/chat/completions'
 
 // Primary & Direct Fallback Models (Free high-limit execution via Google AI Studio Key)
 const GEMINI_PRIMARY_MODEL = 'gemini-2.5-flash'
-const GEMINI_FALLBACK_MODEL = 'gemini-2.0-flash'
+const GEMINI_FALLBACK_MODEL = 'gemini-2.5-flash-002'
+const GEMINI_TERTIARY_MODEL = 'gemini-2.0-flash-exp'
 const OPENROUTER_STANDBY_MODEL = 'meta-llama/llama-3.3-70b-instruct'
 
 /**
@@ -31,15 +32,16 @@ export async function callAgent(systemPrompt, userMessage, useVision = false, fa
     throw new Error("No API keys configured! Add VITE_GEMINI_API_KEY to your frontend/.env file.")
   }
 
-  // Stage 0: Direct Google gemini-2.5-flash
-  // Stage 1: Direct Google gemini-2.0-flash
-  // Stage 2: OpenRouter Standby (Llama 3.3 text fallback)
-  const currentModel = fallbackStage === 0 ? GEMINI_PRIMARY_MODEL : (fallbackStage === 1 ? GEMINI_FALLBACK_MODEL : OPENROUTER_STANDBY_MODEL)
+  // Stage 0: Direct Google gemini-2.5-flash (Official stable production Flash)
+  // Stage 1: Direct Google gemini-2.5-flash-002 (Secondary checkpoint)
+  // Stage 2: Direct Google gemini-2.0-flash-exp (Free experimental 2.0 Flash)
+  // Stage 3: OpenRouter Standby (Llama 3.3 text fallback)
+  const currentModel = fallbackStage === 0 ? GEMINI_PRIMARY_MODEL : (fallbackStage === 1 ? GEMINI_FALLBACK_MODEL : (fallbackStage === 2 ? GEMINI_TERTIARY_MODEL : OPENROUTER_STANDBY_MODEL))
 
-  if (fallbackStage === 0 || fallbackStage === 1) {
+  if (fallbackStage <= 2) {
     if (!geminiKey) {
       console.warn(`[Klarix Engine] No VITE_GEMINI_API_KEY found, jumping to OpenRouter standby...`)
-      return await callAgent(systemPrompt, userMessage, useVision, 2)
+      return await callAgent(systemPrompt, userMessage, useVision, 3)
     }
 
     console.log(`[Klarix Engine] Executing agent directly via Google AI Studio (${currentModel}) with high-fidelity structural formatting...`)
@@ -132,7 +134,7 @@ export async function callAgent(systemPrompt, userMessage, useVision = false, fa
     }
   }
 
-  // Stage 2: Final Emergency Standby via OpenRouter Gateway
+  // Stage 3: Final Emergency Standby via OpenRouter Gateway
   if (!openRouterKey) {
     throw new Error("All Direct Gemini API executions hit limitations, and no VITE_OPENROUTER_API_KEY is configured for emergency standby.")
   }
