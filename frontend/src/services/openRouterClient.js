@@ -58,7 +58,7 @@ export async function callAgent(systemPrompt, userMessage, useVision = false, us
           { role: 'system', content: systemPrompt },
           { role: 'user',   content: formattedContent }
         ],
-        max_tokens: 4000,
+        max_tokens: 1350,
         temperature: 0.5,
         response_format: { type: 'json_object' }
       })
@@ -77,7 +77,16 @@ export async function callAgent(systemPrompt, userMessage, useVision = false, us
     }
 
     const cleaned = rawText.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim()
-    return JSON.parse(cleaned)
+    try {
+      return JSON.parse(cleaned)
+    } catch (jsonParseError) {
+      console.warn("[Klarix Engine] Direct JSON.parse error, extracting object braces...", jsonParseError)
+      const match = cleaned.match(/\{[\s\S]*\}/)
+      if (match) {
+        return JSON.parse(match[0])
+      }
+      throw jsonParseError
+    }
 
   } catch (error) {
     if (!useFallback) {
