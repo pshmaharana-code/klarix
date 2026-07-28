@@ -15,17 +15,17 @@ app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 
 // Configure Multer in-memory upload handler (up to 60MB for video content)
-const upload = multer({ 
+const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 60 * 1024 * 1024 } 
+  limits: { fileSize: 60 * 1024 * 1024 }
 })
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'Klarix 3-Agent AI Engine Operational', 
-    version: '1.0.0', 
-    timestamp: new Date().toISOString() 
+  res.json({
+    status: 'Klarix 3-Agent AI Engine Operational',
+    version: '1.0.0',
+    timestamp: new Date().toISOString()
   })
 })
 
@@ -51,9 +51,16 @@ app.post('/api/analyse', upload.single('mediaFile'), async (req, res) => {
     } = req.body
 
     let mediaInfo = "No media file attached; relying on numerical analytics and brand context."
+    let mediaFilePayload = null // <-- ADDED: Holds the actual file data for the AI
+
     if (file) {
       const sizeMB = (file.size / (1024 * 1024)).toFixed(2)
       mediaInfo = `Uploaded Asset: ${file.originalname} (${file.mimetype}, ${sizeMB}MB), Content Type: ${contentType || 'Reel'} for ${platform || 'Instagram'}`
+
+      // <-- ADDED: Convert the Multer buffer directly to a Base64 Data URI
+      const b64 = file.buffer.toString('base64')
+      mediaFilePayload = `data:${file.mimetype};base64,${b64}`
+
       console.log(`[Klarix API] Media attached: ${mediaInfo}`)
     }
 
@@ -76,9 +83,10 @@ app.post('/api/analyse', upload.single('mediaFile'), async (req, res) => {
 
     const results = await executeThreeAgentPipeline({
       mediaInfo,
-      transcript: null, // Agent 1 will evaluate visual/audio context
+      transcript: null,
       analytics,
-      brandContext
+      brandContext,
+      mediaFilePayload // <-- ADDED: Pipeline now actually receives the visual file!
     })
 
     console.log('[Klarix API] Pipeline completed successfully. Transmitting payload to frontend.')
@@ -87,9 +95,9 @@ app.post('/api/analyse', upload.single('mediaFile'), async (req, res) => {
     res.status(200).json(results)
   } catch (error) {
     console.error('[Klarix API] Error processing analysis request:', error)
-    res.status(500).json({ 
-      success: false, 
-      error: error.message || 'An internal error occurred while executing the AI pipeline.' 
+    res.status(500).json({
+      success: false,
+      error: error.message || 'An internal error occurred while executing the AI pipeline.'
     })
   }
 })

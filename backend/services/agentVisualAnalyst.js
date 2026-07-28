@@ -25,6 +25,8 @@ Analyse the following and return structured JSON:
 - cta_strength: analysis of the call-to-action friction and placement
 - metric_interpretation: object interpreting views, watch_time, saves, shares, and comments specifically for THIS content
 - content_type_fit: is this format right for the message being delivered
+- what_worked: array of exactly 3 strings — each string is 1 sentence under 20 words. Specific findings only.
+- what_failed: array of exactly 3 strings — each string is 1 sentence under 20 words. Include the timestamp or metric reference.
 - overall_diagnosis: 3-4 sentence summary of what happened and why retention decayed
 
 CRITICAL LENGTH RULE: Keep diagnostic fields to 1–2 sentences maximum. No paragraphs.

@@ -1,10 +1,6 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import NavBar from '../components/NavBar.vue'
-import { fileToBase64 } from '../services/openRouterClient.js'
-import { runVisualAnalyst } from '../services/agentVisualAnalyst.js'
-import { runStrategist } from '../services/agentStrategist.js'
-import { runScriptwriter } from '../services/agentScriptwriter.js'
 
 // Strict UI States exactly as specified
 const STATES = {
@@ -162,7 +158,7 @@ const copyScript = computed(() => {
   ].join('\n')
 })
 
-// MAIN AI ORCHESTRATION VIA AGENT WRAPPERS
+// MAIN AI ORCHESTRATION VIA BACKEND API REQUEST
 const runAnalysis = async () => {
   if (uploadedFiles.value.length === 0 && (!form.views || String(form.views).trim() === '')) {
     errorMessage.value = "Missing Content or Data: Please attach your carousel slides, reel, or image post, or provide your performance metrics (Views / Reach *) before running an analysis."
@@ -177,77 +173,67 @@ const runAnalysis = async () => {
   
   currentState.value = STATES.LOADING
   activeAgentStep.value = 1
-  loadingStepText.value = uploadedFiles.value.length > 0 ? `Reading ${uploadedFiles.value.length} media file(s)...` : "Analysing numerical performance data..."
+  loadingStepText.value = "Transmitting data to secure Klarix server..."
 
   try {
-    let mediaPayload = null
+    // Package data to send to your Express Backend
+    const formData = new FormData()
     if (uploadedFiles.value.length > 0) {
-      loadingStepText.value = `Converting media asset to Gemini vision stream...`
-      const b64 = await fileToBase64(uploadedFiles.value[0].file)
-      mediaPayload = `data:${uploadedFiles.value[0].type};base64,${b64}`
+      formData.append('mediaFile', uploadedFiles.value[0].file)
+    }
+    formData.append('contentType', contentType.value)
+    formData.append('platform', platform.value)
+    formData.append('views', form.views || '')
+    formData.append('watchTime', form.watchTime || '')
+    formData.append('likes', form.likes || '')
+    formData.append('comments', form.comments || '')
+    formData.append('shares', form.shares || '')
+    formData.append('saves', form.saves || '')
+    formData.append('profileVisits', form.profileVisits || '')
+    formData.append('followersGained', form.followersGained || '')
+    formData.append('brandContext', form.brandContext || '')
+
+    // Fake UX Timer to make the UI look active while the backend does all the work
+    const uxTimer = setInterval(() => {
+      if (activeAgentStep.value < 3) {
+        activeAgentStep.value++
+        loadingStepText.value = activeAgentStep.value === 2 
+          ? "Agent 2: Building Strategy & Trend Insights..." 
+          : "Agent 3: Synthesizing Ready-to-Record Script..."
+      }
+    }, 7000)
+
+    // Call your local backend server
+    const response = await fetch('http://localhost:3001/api/analyse', {
+      method: 'POST',
+      body: formData
+    })
+
+    clearInterval(uxTimer) // Stop the UX timer
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}))
+      throw new Error(errData.error || `Backend server error: ${response.status}`)
     }
 
-    const analyticsData = {
-      platform: platform.value,
-      contentType: contentType.value,
-      views: form.views || 0,
-      watchTime: form.watchTime ? `${form.watchTime}%` : 'N/A',
-      likes: form.likes || 0,
-      comments: form.comments || 0,
-      shares: form.shares || 0,
-      saves: form.saves || 0,
-      profileVisits: form.profileVisits || 0,
-      followersGained: form.followersGained || 0
+    const data = await response.json()
+
+    if (data.success) {
+      // Map backend outputs to frontend UI state
+      diagnosis.value = data.raw.diagnosis
+      strategy.value = data.raw.strategy
+      script.value = data.raw.scriptOutput
+      
+      activeAgentStep.value = 3
+      currentState.value = STATES.COMPLETE
+    } else {
+      throw new Error("Pipeline execution failed on backend.")
     }
-
-    const brandInfo = form.brandContext || "Creator looking to optimize short-form audience retention."
-
-    // --- AGENT 1: VISUAL ANALYST ---
-    activeAgentStep.value = 1
-    loadingStepText.value = `Agent 1 running — Deep Multimodal Analysis...`
-
-    const res1 = await runVisualAnalyst({
-      mediaInfo: `${contentType.value} for ${platform.value}`,
-      analytics: analyticsData,
-      brandContext: brandInfo,
-      mediaFilePayload: mediaPayload
-    })
-
-    diagnosis.value = res1
-    currentState.value = STATES.PARTIAL // First card renders instantly
-
-    // --- AGENT 2: STRATEGIST ---
-    activeAgentStep.value = 2
-    loadingStepText.value = "Agent 2 running — Building Growth Strategy & Trend Insights..."
-    
-    const res2 = await runStrategist({
-      diagnosis: res1,
-      brandContext: brandInfo
-    })
-    strategy.value = res2 // Second card renders instantly
-
-    // --- AGENT 3: SCRIPTWRITER ---
-    activeAgentStep.value = 3
-    loadingStepText.value = "Agent 3 running — Synthesizing Ready-to-Record Script..."
-
-    const res3 = await runScriptwriter({
-      strategy: res2,
-      diagnosis: res1,
-      brandContext: brandInfo
-    })
-    script.value = res3
-
-    // ALL AGENTS COMPLETE
-    currentState.value = STATES.COMPLETE
 
   } catch (error) {
-    console.error("[Klarix Execution Error]", error)
+    console.error("[Klarix UI Error]", error)
     currentState.value = STATES.ERROR
-    if (error.message && error.message.includes("API key")) {
-      errorMessage.value = "API key not configured. Add your GEMINI_API_KEY to the .env file."
-    } else {
-      errorMessage.value = `Analysis failed: ${error.message || 'Unknown network error occurred.'}`
-    }
+    errorMessage.value = `Analysis failed: ${error.message || 'Unknown network error occurred.'}`
   }
 }
 
@@ -509,7 +495,7 @@ onMounted(() => {
               </button>
               
               <p class="text-center text-xs text-slate-500 mt-3">
-                By clicking, you agree to our terms. Your content is processed instantly via Gemini API.
+                By clicking, you agree to our terms. Your content is processed securely on the Klarix backend API.
               </p>
             </div>
 
@@ -574,14 +560,6 @@ onMounted(() => {
           <!-- 4 & 5. PARTIAL / COMPLETE STATES -->
           <div v-if="(currentState === STATES.PARTIAL || currentState === STATES.COMPLETE || diagnosis) && currentState !== STATES.ERROR" class="space-y-6 animate-fadeIn">
             
-            <div v-if="currentState === STATES.PARTIAL || (currentState === STATES.LOADING && diagnosis)" class="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 flex items-center justify-between text-xs text-indigo-300 animate-pulse">
-              <div class="flex items-center gap-2 font-mono">
-                <span class="w-2 h-2 rounded-full bg-indigo-400 animate-ping"></span>
-                <span>{{ loadingStepText }}</span>
-              </div>
-              <span class="font-bold text-[10px] uppercase bg-indigo-500/20 px-2.5 py-1 rounded-full border border-indigo-500/30">Gemini Streaming</span>
-            </div>
-
             <!-- CARD 1: EXTRACTED TRANSCRIPT -->
             <div v-if="uploadedFiles.some(f => f.category === 'video') && diagnosis" class="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition-all duration-300 space-y-4">
               <div class="flex items-center justify-between">
