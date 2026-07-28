@@ -1,7 +1,10 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import NavBar from '../components/NavBar.vue'
-import { fileToBase64, callAgent, AGENT_1_PROMPT, AGENT_2_PROMPT, AGENT_3_PROMPT } from '../services/openRouterClient.js'
+import { fileToBase64 } from '../services/openRouterClient.js'
+import { runVisualAnalyst } from '../services/agentVisualAnalyst.js'
+import { runStrategist } from '../services/agentStrategist.js'
+import { runScriptwriter } from '../services/agentScriptwriter.js'
 
 // Strict UI States exactly as specified
 const STATES = {
@@ -68,7 +71,6 @@ const onFileChange = (e) => {
 
 const handleFiles = (fileList) => {
   for (const file of fileList) {
-    // Check File size rule: Over 50MB -> Show error
     if (file.size > 50 * 1024 * 1024) {
       errorMessage.value = `File "${file.name}" is too large (${(file.size/(1024*1024)).toFixed(1)}MB). Please compress videos/images to under 50MB.`
       currentState.value = STATES.ERROR
@@ -80,7 +82,6 @@ const handleFiles = (fileList) => {
     uploadedFiles.value.push({ file, url, name: file.name, size: file.size, type: file.type, category })
   }
 
-  // Automatically adapt Content Type pill switch based on uploaded items
   if (uploadedFiles.value.length > 1) {
     contentType.value = 'Carousel'
   } else if (uploadedFiles.value.length === 1) {
@@ -161,9 +162,8 @@ const copyScript = computed(() => {
   ].join('\n')
 })
 
-// MAIN AI ORCHESTRATION VIA DIRECT GOOGLE GEMINI API CALLS
+// MAIN AI ORCHESTRATION VIA AGENT WRAPPERS
 const runAnalysis = async () => {
-  // Strictly prevent running the AI pipeline if no media file is attached and no analytics numbers are provided
   if (uploadedFiles.value.length === 0 && (!form.views || String(form.views).trim() === '')) {
     errorMessage.value = "Missing Content or Data: Please attach your carousel slides, reel, or image post, or provide your performance metrics (Views / Reach *) before running an analysis."
     currentState.value = STATES.ERROR
@@ -177,24 +177,17 @@ const runAnalysis = async () => {
   
   currentState.value = STATES.LOADING
   activeAgentStep.value = 1
-  loadingStepText.value = uploadedFiles.value.length > 0 ? `Reading ${uploadedFiles.value.length} media file(s) into memory...` : "Analysing numerical performance data..."
+  loadingStepText.value = uploadedFiles.value.length > 0 ? `Reading ${uploadedFiles.value.length} media file(s)...` : "Analysing numerical performance data..."
 
   try {
-    const mediaObjects = []
-    
-    // Convert all carousel slide images or video files to base64
+    let mediaPayload = null
     if (uploadedFiles.value.length > 0) {
-      loadingStepText.value = `Converting ${uploadedFiles.value.length} asset(s) to Direct Gemini vision streams...`
-      for (const item of uploadedFiles.value) {
-        const b64 = await fileToBase64(item.file)
-        mediaObjects.push({
-          type: 'image_url',
-          image_url: { url: `data:${item.type};base64,${b64}` }
-        })
-      }
+      loadingStepText.value = `Converting media asset to Gemini vision stream...`
+      const b64 = await fileToBase64(uploadedFiles.value[0].file)
+      mediaPayload = `data:${uploadedFiles.value[0].type};base64,${b64}`
     }
 
-    const analyticsText = JSON.stringify({
+    const analyticsData = {
       platform: platform.value,
       contentType: contentType.value,
       views: form.views || 0,
@@ -205,75 +198,53 @@ const runAnalysis = async () => {
       saves: form.saves || 0,
       profileVisits: form.profileVisits || 0,
       followersGained: form.followersGained || 0
-    })
+    }
 
     const brandInfo = form.brandContext || "Creator looking to optimize short-form audience retention."
 
     // --- AGENT 1: VISUAL ANALYST ---
     activeAgentStep.value = 1
-    loadingStepText.value = `Agent 1 running — Deep Multimodal Analysis across ${uploadedFiles.value.length || 'Numerical'} asset(s)...`
+    loadingStepText.value = `Agent 1 running — Deep Multimodal Analysis...`
 
-    let userMessageAgent1 = null
-    const isVision = mediaObjects.length > 0
+    const res1 = await runVisualAnalyst({
+      mediaInfo: `${contentType.value} for ${platform.value}`,
+      analytics: analyticsData,
+      brandContext: brandInfo,
+      mediaFilePayload: mediaPayload
+    })
 
-    if (isVision) {
-      const intro = contentType.value === 'Carousel'
-        ? `These are ${mediaObjects.length} sequential slides from a social media Carousel post. Analyse slide-by-slide visual flow, hook formatting, typography, and content retention bottlenecks across all slides. Analytics: ${analyticsText}. Brand: ${brandInfo}`
-        : `Analyse this visual content thoroughly (video reel or static post frame-by-frame). Extract transcript if speech present. Analytics: ${analyticsText}. Brand: ${brandInfo}`
-      
-      userMessageAgent1 = [...mediaObjects, { type: 'text', text: intro }]
-    } else {
-      userMessageAgent1 = `No video or images were provided. Analyse based on the analytics numbers and brand context only. Content Type: ${contentType.value} for ${platform.value}. Analytics: ${analyticsText}. Brand Context: ${brandInfo}`
-    }
-
-    // Call Agent 1 (Direct Google Gemini AI Studio endpoint)
-    const res1 = await callAgent(AGENT_1_PROMPT, userMessageAgent1, isVision)
     diagnosis.value = res1
-    currentState.value = STATES.PARTIAL // First card renders instantly!
+    currentState.value = STATES.PARTIAL // First card renders instantly
 
     // --- AGENT 2: STRATEGIST ---
     activeAgentStep.value = 2
-    loadingStepText.value = "Agent 2 running — Building Strategy & Niche Trend Research..."
+    loadingStepText.value = "Agent 2 running — Building Growth Strategy & Trend Insights..."
     
-    const strategyPromptText = JSON.stringify({
-      performanceDiagnosis: res1,
-      brandContext: brandInfo,
-      contentType: contentType.value,
-      platform: platform.value,
-      visualInstructions: "Observe all attached original carousel slides or video frames to pinpoint precise layout and copywriting competitor gaps.",
-      trendSearchRequest: `Current 2025 short-form performance patterns and competitor gaps for creator in niche: "${brandInfo}"`
+    const res2 = await runStrategist({
+      diagnosis: res1,
+      brandContext: brandInfo
     })
+    strategy.value = res2 // Second card renders instantly
 
-    // Route original media slides cleanly to Agent 2 via OpenRouter Gateway
-    const userMessageAgent2 = isVision ? [...mediaObjects, { type: 'text', text: strategyPromptText }] : strategyPromptText
-    const res2 = await callAgent(AGENT_2_PROMPT, userMessageAgent2, isVision)
-    strategy.value = res2 // Second card renders instantly!
-
-    // --- AGENT 3: SCRIPTWRITER / CAROUSEL COPYWRITER ---
+    // --- AGENT 3: SCRIPTWRITER ---
     activeAgentStep.value = 3
-    loadingStepText.value = "Agent 3 running — Synthesizing Optimized Script & Slide Copy..."
+    loadingStepText.value = "Agent 3 running — Synthesizing Ready-to-Record Script..."
 
-    const creatorTranscript = res1.transcript_quality || "Authoritative, confident punchy founder voice."
-    const scriptPromptText = JSON.stringify({
-      strategicDirection: res2,
-      creatorOriginalTranscript: creatorTranscript,
-      brandContext: brandInfo,
-      visualInstructions: "Examine the attached original carousel slide images or video frames. Match the brand's typographic voice while repairing all drop-off weak points identified by Agent 1."
+    const res3 = await runScriptwriter({
+      strategy: res2,
+      diagnosis: res1,
+      brandContext: brandInfo
     })
-
-    // Route original media slides cleanly to Agent 3 via OpenRouter Gateway
-    const userMessageAgent3 = isVision ? [...mediaObjects, { type: 'text', text: scriptPromptText }] : scriptPromptText
-    const res3 = await callAgent(AGENT_3_PROMPT, userMessageAgent3, isVision)
     script.value = res3
 
-    // ALL AGENTS COMPLETE!
+    // ALL AGENTS COMPLETE
     currentState.value = STATES.COMPLETE
 
   } catch (error) {
-    console.error("[Klarix Direct Execution Error]", error)
+    console.error("[Klarix Execution Error]", error)
     currentState.value = STATES.ERROR
-    if (error.message.includes("API key not configured")) {
-      errorMessage.value = "API key not configured. Add your Gemini or OpenRouter key to the frontend/.env file."
+    if (error.message && error.message.includes("API key")) {
+      errorMessage.value = "API key not configured. Add your GEMINI_API_KEY to the .env file."
     } else {
       errorMessage.value = `Analysis failed: ${error.message || 'Unknown network error occurred.'}`
     }
@@ -342,7 +313,6 @@ onMounted(() => {
                 :class="isDragging ? 'border-indigo-500 bg-indigo-500/10 shadow-[0_0_30px_rgba(99,102,241,0.3)]' : 'border-slate-800 hover:border-slate-700 bg-[#070a14]'"
                 class="relative border-2 border-dashed rounded-3xl p-6 sm:p-8 text-center cursor-pointer transition-all duration-300 group overflow-hidden"
               >
-                <!-- NOTICE MULTIPLE ENABLED HERE FOR CAROUSELS -->
                 <input ref="fileInput" @change="onFileChange" type="file" multiple accept="video/mp4,video/quicktime,image/jpeg,image/png,image/webp" class="hidden" />
 
                 <!-- Files Loaded Preview Deck -->
@@ -370,7 +340,6 @@ onMounted(() => {
                   <div v-else class="space-y-4">
                     <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[360px] overflow-y-auto p-1 text-left">
                       <div v-for="(item, idx) in uploadedFiles" :key="idx" class="relative group/card rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 hover:border-indigo-500/50 transition-all shadow-sm">
-                        <!-- Thumb -->
                         <div class="h-28 w-full bg-black/40 overflow-hidden flex items-center justify-center relative">
                           <img v-if="item.category === 'image'" :src="item.url" class="w-full h-full object-cover group-hover/card:scale-105 transition-transform" />
                           <video v-else :src="item.url" class="w-full h-full object-cover"></video>
@@ -378,7 +347,6 @@ onMounted(() => {
                             Slide {{ idx + 1 }}
                           </span>
                         </div>
-                        <!-- Info & Remove -->
                         <div class="p-2 flex items-center justify-between bg-[#080b15]">
                           <span class="text-[10px] text-slate-400 truncate w-24">{{ item.name }}</span>
                           <button @click="(e) => removeFile(idx, e)" type="button" title="Remove Slide" class="text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 p-1 rounded transition-colors">
@@ -541,7 +509,7 @@ onMounted(() => {
               </button>
               
               <p class="text-center text-xs text-slate-500 mt-3">
-                By clicking, you agree to our terms. Your content is processed instantly via Direct Google Gemini API and never stored on shared servers.
+                By clicking, you agree to our terms. Your content is processed instantly via Gemini API.
               </p>
             </div>
 
@@ -553,7 +521,7 @@ onMounted(() => {
           class="lg:col-span-6 transition-all duration-[1000ms] delay-200 ease-[cubic-bezier(0.16,1,0.3,1)]"
           :class="isLoaded ? 'translate-x-0 opacity-100' : 'translate-x-32 opacity-0'"
         >
-          <!-- 1. IDLE STATE: COMPLETELY EMPTY AS SPECIFIED -->
+          <!-- 1. IDLE STATE: EMPTY -->
           <div v-if="currentState === STATES.IDLE"></div>
 
           <!-- 2. LOADING STATE: SHOW REAL-TIME AGENT STEPS ONLY -->
@@ -567,17 +535,14 @@ onMounted(() => {
             </div>
 
             <div class="space-y-4 max-w-sm mx-auto pt-2">
-              <!-- Agent 1 Step Indicator -->
               <div class="flex items-center gap-3.5 p-3.5 rounded-2xl bg-slate-900/80 border transition-all" :class="activeAgentStep >= 1 ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-slate-800 opacity-40'">
                 <span class="w-2.5 h-2.5 rounded-full" :class="activeAgentStep > 1 ? 'bg-emerald-400' : (activeAgentStep === 1 ? 'bg-indigo-400 animate-ping' : 'bg-slate-600')"></span>
                 <span class="text-xs font-semibold" :class="activeAgentStep >= 1 ? 'text-slate-200' : 'text-slate-500'">Agent 1: Performance Analyst</span>
               </div>
-              <!-- Agent 2 Step Indicator -->
               <div class="flex items-center gap-3.5 p-3.5 rounded-2xl bg-slate-900/80 border transition-all" :class="activeAgentStep >= 2 ? 'border-blue-500/40 bg-blue-500/5' : 'border-slate-800 opacity-40'">
                 <span class="w-2.5 h-2.5 rounded-full" :class="activeAgentStep > 2 ? 'bg-blue-400' : (activeAgentStep === 2 ? 'bg-blue-400 animate-ping' : 'bg-slate-600')"></span>
                 <span class="text-xs font-semibold" :class="activeAgentStep >= 2 ? 'text-slate-200' : 'text-slate-500'">Agent 2: Strategist & Trend Intelligence</span>
               </div>
-              <!-- Agent 3 Step Indicator -->
               <div class="flex items-center gap-3.5 p-3.5 rounded-2xl bg-slate-900/80 border transition-all" :class="activeAgentStep >= 3 ? 'border-purple-500/40 bg-purple-500/5' : 'border-slate-800 opacity-40'">
                 <span class="w-2.5 h-2.5 rounded-full" :class="activeAgentStep === 3 ? 'bg-purple-400 animate-ping' : 'bg-slate-600'"></span>
                 <span class="text-xs font-semibold" :class="activeAgentStep >= 3 ? 'text-slate-200' : 'text-slate-500'">Agent 3: Viral Scriptwriter</span>
@@ -585,7 +550,7 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- 3. ERROR STATE: SHOW EXPLICIT ERROR MESSAGE & TRY AGAIN BUTTON ONLY -->
+          <!-- 3. ERROR STATE -->
           <div v-if="currentState === STATES.ERROR" class="p-8 sm:p-10 rounded-[2.5rem] bg-rose-950/20 backdrop-blur-2xl border border-rose-500/40 shadow-[0_20px_60px_rgba(244,63,94,0.15)] text-center space-y-6 animate-fadeIn">
             <div class="w-16 h-16 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-400 flex items-center justify-center mx-auto shadow-[0_0_20px_rgba(244,63,94,0.3)]">
               <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -606,19 +571,18 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- 4 & 5. PARTIAL / COMPLETE STATES: PROGRESSIVELY APPEARING CARDS -->
+          <!-- 4 & 5. PARTIAL / COMPLETE STATES -->
           <div v-if="(currentState === STATES.PARTIAL || currentState === STATES.COMPLETE || diagnosis) && currentState !== STATES.ERROR" class="space-y-6 animate-fadeIn">
             
-            <!-- Ongoing Loading Indicator if Pipeline is still processing subsequent agents -->
             <div v-if="currentState === STATES.PARTIAL || (currentState === STATES.LOADING && diagnosis)" class="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 flex items-center justify-between text-xs text-indigo-300 animate-pulse">
               <div class="flex items-center gap-2 font-mono">
                 <span class="w-2 h-2 rounded-full bg-indigo-400 animate-ping"></span>
                 <span>{{ loadingStepText }}</span>
               </div>
-              <span class="font-bold text-[10px] uppercase bg-indigo-500/20 px-2.5 py-1 rounded-full border border-indigo-500/30">Direct Gemini AI Streaming</span>
+              <span class="font-bold text-[10px] uppercase bg-indigo-500/20 px-2.5 py-1 rounded-full border border-indigo-500/30">Gemini Streaming</span>
             </div>
 
-            <!-- CARD 1: EXTRACTED TRANSCRIPT (Only shows if video uploaded) -->
+            <!-- CARD 1: EXTRACTED TRANSCRIPT -->
             <div v-if="uploadedFiles.some(f => f.category === 'video') && diagnosis" class="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition-all duration-300 space-y-4">
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2 text-xs font-bold text-slate-300 uppercase tracking-wider">
@@ -631,11 +595,11 @@ onMounted(() => {
               </div>
 
               <div v-if="isTranscriptOpen" class="p-4 rounded-2xl bg-[#070a14] border border-slate-800/80 font-mono text-xs text-slate-400 leading-relaxed whitespace-pre-wrap animate-fadeIn">
-                {{ diagnosis.transcript_quality || 'No speech detected or silent video stream.' }}
+                {{ diagnosis.extracted_transcript || diagnosis.transcript_quality || 'No speech detected or silent video stream.' }}
               </div>
             </div>
 
-            <!-- CARD 2: WHAT WORKED ✓ (Green Scheme #22C55E) -->
+            <!-- CARD 2: WHAT WORKED ✓ -->
             <div v-if="diagnosis" class="p-7 rounded-[2.5rem] bg-emerald-950/20 backdrop-blur-xl border border-emerald-500/30 hover:border-emerald-500/50 hover:shadow-[0_0_35px_rgba(34,197,94,0.25)] transition-all duration-300 space-y-5 animate-fadeIn">
               <div class="flex items-center justify-between">
                 <h3 class="text-lg font-bold font-display text-emerald-400 flex items-center gap-2">
@@ -654,7 +618,7 @@ onMounted(() => {
               </ul>
             </div>
 
-            <!-- CARD 3: WHAT FAILED ✗ (Red Scheme #EF4444) -->
+            <!-- CARD 3: WHAT FAILED ✗ -->
             <div v-if="diagnosis" class="p-7 rounded-[2.5rem] bg-rose-950/20 backdrop-blur-xl border border-rose-500/30 hover:border-rose-500/50 hover:shadow-[0_0_35px_rgba(239,68,68,0.25)] transition-all duration-300 space-y-5 animate-fadeIn">
               <div class="flex items-center justify-between">
                 <h3 class="text-lg font-bold font-display text-rose-400 flex items-center gap-2">
@@ -683,7 +647,7 @@ onMounted(() => {
               </div>
             </div>
 
-            <!-- CARD 4: YOUR NEXT POST STRATEGY → (Blue Scheme #3B82F6) -->
+            <!-- CARD 4: YOUR NEXT POST STRATEGY → -->
             <div v-if="strategy" class="p-7 rounded-[2.5rem] bg-blue-950/20 backdrop-blur-xl border border-blue-500/30 hover:border-blue-500/50 hover:shadow-[0_0_35px_rgba(59,130,246,0.25)] transition-all duration-300 space-y-5 animate-fadeIn">
               <div class="flex items-center justify-between">
                 <h3 class="text-lg font-bold font-display text-blue-400 flex items-center gap-2">
@@ -731,7 +695,7 @@ onMounted(() => {
               </div>
             </div>
 
-            <!-- CARD 5: READY-TO-RECORD SCRIPT ✎ (Purple Scheme #A855F7) -->
+            <!-- CARD 5: READY-TO-RECORD SCRIPT ✎ -->
             <div v-if="script" class="p-7 rounded-[2.5rem] bg-purple-950/20 backdrop-blur-xl border border-purple-500/30 hover:border-purple-500/50 hover:shadow-[0_0_40px_rgba(168,85,247,0.3)] transition-all duration-300 space-y-6 animate-fadeIn">
               <div class="flex items-center justify-between">
                 <h3 class="text-lg font-bold font-display text-purple-400 flex items-center gap-2">
@@ -780,14 +744,13 @@ onMounted(() => {
               </div>
             </div>
 
-            <!-- FINAL CTA (Appears when all agents complete as requested in step 10) -->
             <div v-if="currentState === STATES.COMPLETE" class="pt-4 text-center animate-fadeIn">
               <a 
                 href="https://instagram.com/piyush._maharana" 
                 target="_blank"
                 class="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-slate-900/90 hover:bg-slate-800 border border-indigo-500/40 text-xs sm:text-sm font-bold text-indigo-400 hover:text-white transition-all shadow-[0_0_20px_rgba(99,102,241,0.25)] hover:shadow-[0_0_30px_rgba(99,102,241,0.5)]"
               >
-                <span>🚀 Follow the build &middot; @piyush._maharana (IIT Madras) →</span>
+                <span>🚀 Follow the build &middot; @piyush._maharana →</span>
               </a>
             </div>
 
