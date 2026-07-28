@@ -1,6 +1,10 @@
-import { generateAiJson } from './openRouter.js'
+import { callAgent } from './openRouterClient.js'
+
+const CURRENT_YEAR = new Date().getFullYear()
 
 const SYSTEM_PROMPT = `You are a senior social media performance analyst with deep expertise in short-form video psychology and content analytics.
+
+TEMPORAL CONTEXT: The current year is ${CURRENT_YEAR}. All metric evaluations and content benchmarks MUST reflect current ${CURRENT_YEAR} algorithms.
 
 You will receive:
 1. Media file information and extracted content context
@@ -11,6 +15,8 @@ You will receive:
 Your job is ONLY to analyse and diagnose. Do not give advice yet.
 
 Analyse the following and return structured JSON:
+- extracted_transcript: string — complete verbatim transcript of spoken audio extracted directly from the video.
+- extracted_visual_text: array of strings — all text overlays, captions, or written text visible.
 - hook_strength: what happens in the first 3 seconds visually and verbally
 - retention_drop_point: estimated timestamp or section where viewers exited (e.g., "0:09 - 0:12")
 - retention_drop_reason: why viewers likely dropped based on pacing, content shifts, or structural complexity
@@ -21,37 +27,22 @@ Analyse the following and return structured JSON:
 - content_type_fit: is this format right for the message being delivered
 - overall_diagnosis: 3-4 sentence summary of what happened and why retention decayed
 
-Return ONLY valid JSON. No preamble. No explanation outside the JSON.`
+CRITICAL LENGTH RULE: Keep diagnostic fields to 1–2 sentences maximum. No paragraphs.
+Return ONLY valid JSON. No preamble.`
 
-export async function runVisualAnalyst({ mediaInfo, transcript, analytics, brandContext }) {
-  const userMessage = JSON.stringify({
-    mediaInfo: mediaInfo || "Short-form video asset uploaded by creator",
-    transcript: transcript || "No audio transcript available — visual or static carousel content.",
-    analytics: analytics || {},
-    brandContext: brandContext || "Early-stage entrepreneur or personal brand aiming to scale influence."
-  }, null, 2)
+export async function runVisualAnalyst({ mediaInfo, transcript, analytics, brandContext, mediaFilePayload }) {
+  const userMessage = [
+    ...(mediaFilePayload ? [{ type: 'image_url', image_url: { url: mediaFilePayload } }] : []),
+    {
+      type: 'text',
+      text: JSON.stringify({
+        mediaInfo: mediaInfo || "Short-form video asset uploaded by creator",
+        analytics: analytics || {},
+        brandContext: brandContext || "Early-stage entrepreneur or personal brand aiming to scale influence."
+      }, null, 2)
+    }
+  ]
 
-  const result = await generateAiJson({
-    systemPrompt: SYSTEM_PROMPT,
-    userMessage: userMessage
-  })
-
-  // Provide defensive structure if AI output missed any key
-  return result || {
-    hook_strength: "Opening verbal pattern interrupt landed well within the initial 2 seconds.",
-    retention_drop_point: "0:08 - 0:11",
-    retention_drop_reason: "Pacing slowed significantly as internal architecture was explained before demonstrating tangible final value.",
-    visual_quality: "High initial visual contrast, but lacked dynamic kinetic text overlay during mid-sections.",
-    transcript_quality: "Clear speaking style, though vocabulary became dense midway through the explanation.",
-    cta_strength: "Call-to-action appeared late in the runtime after the primary engagement threshold passed.",
-    metric_interpretation: {
-      views: `Reach (${analytics?.views || 'Standard'}) demonstrates solid algorithmic discovery.`,
-      watch_time: `Watch time (${analytics?.watchTime || 'Standard'}%) indicates a mid-funnel retention bottleneck.`,
-      saves: "Save conversion demonstrates strong foundational perceived value.",
-      shares: "Share velocity suggests moderate viral advocacy among peers.",
-      comments: "Comment engagement indicates active audience resonance with the core problem."
-    },
-    content_type_fit: "Reel format is optimal, but requires tighter editing pacing.",
-    overall_diagnosis: "Your hook caught attention effectively, but an early transition into dry mechanics caused casual viewers to exit before reaching your core takeaway and call to action."
-  }
+  const result = await callAgent(SYSTEM_PROMPT, userMessage, true)
+  return result
 }

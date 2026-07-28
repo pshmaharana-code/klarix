@@ -1,6 +1,10 @@
-import { generateAiJson } from './openRouter.js'
+import { callAgent } from './openRouterClient.js'
+
+const CURRENT_YEAR = new Date().getFullYear()
 
 const SYSTEM_PROMPT = `You are a social media growth strategist who works exclusively with founders and personal brands.
+
+TEMPORAL CONTEXT: The current year is ${CURRENT_YEAR}. All trend insights, audience preferences, and strategic advice MUST be anchored in ${CURRENT_YEAR}. NEVER reference previous years as the present.
 
 You will receive a detailed performance diagnosis of a piece of content produced by our diagnostic analyst, along with the creator's brand context.
 Your job is to identify the single highest-leverage next move for this creator.
@@ -21,30 +25,22 @@ Return ONLY valid JSON with these exact keys:
 - next_content_angle: specific hook concept and angle targeting their niche
 - hook_direction: exact structural direction for opening visual and script in the first 3 seconds
 - format_recommendation: production notes for editing and pacing
+- trend_insight: string — what is trending in ${CURRENT_YEAR} in this niche + why it matters.
+- competitor_gap: string — what competitors miss + how to use it.
 - estimated_impact: predicted engagement boost (e.g., "+35% retention velocity and doubled profile visits")
 - strategic_reasoning: clear logic explaining why this change solves the diagnosed flaw
 
+CRITICAL LENGTH RULE: No field may exceed 2 sentences.
 Return ONLY valid JSON. No preamble.`
 
 export async function runStrategist({ diagnosis, brandContext }) {
   const userMessage = JSON.stringify({
     diagnosis: diagnosis,
+    extractedTranscript: diagnosis?.extracted_transcript || "",
+    extractedVisualText: diagnosis?.extracted_visual_text || [],
     brandContext: brandContext || "Founder building scalable tech solution."
   }, null, 2)
 
-  const result = await generateAiJson({
-    systemPrompt: SYSTEM_PROMPT,
-    userMessage: userMessage
-  })
-
-  return result || {
-    primary_bottleneck: "Audience drop-off occurred when shifting from an exciting visual hook into abstract internal mechanics.",
-    priority_fix: "Open immediately with the undeniable final result on screen in the first 2 seconds before breaking down the mechanics.",
-    next_content_type: "24-Second Fast-Paced Transformation Breakdown",
-    next_content_angle: "Side-by-side metric comparison contrasting an optimized strategy vs a failed strategy.",
-    hook_direction: "Display large kinetic text: 'Why 90% Get Ignored' with instant high-contrast video footage.",
-    format_recommendation: "Use bold on-screen dynamic captions and cut every 3.5 seconds to preserve visual pattern velocity.",
-    estimated_impact: "+40% completion rate and a 2.5x increase in profile saves.",
-    strategic_reasoning: "Early-stage founders crave immediate proof of utility. Demonstrating the tangible transformation right away earns audience trust to watch the full tutorial."
-  }
+  const result = await callAgent(SYSTEM_PROMPT, userMessage, false)
+  return result
 }

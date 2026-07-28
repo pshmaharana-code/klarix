@@ -1,6 +1,10 @@
-import { generateAiJson } from './openRouter.js'
+import { callAgent } from './openRouterClient.js'
+
+const CURRENT_YEAR = new Date().getFullYear()
 
 const SYSTEM_PROMPT = `You are an expert short-form video scriptwriter specialising in founder content and personal brand videos.
+
+TEMPORAL CONTEXT: The current year is ${CURRENT_YEAR}. Script frameworks, hook pacing, and visual style MUST reflect ${CURRENT_YEAR} short-form video standards.
 
 You will receive:
 1. A strategic direction from our growth strategist (what to create and why)
@@ -18,43 +22,24 @@ Requirements:
 - Include crisp B-roll suggestions and text overlay recommendations
 
 Return ONLY valid JSON with these exact keys:
-- hook: string (formatted as "HOOK (0:00–0:03)\n[Visual: ...]\n\"Script line...\"")
-- body: string (formatted as "BODY (0:03–0:22)\n[Visual: ...]\n\"Script body...\"")
-- cta: string (formatted as "CALL TO ACTION (0:22–0:28)\n[Visual: ...]\n\"CTA line...\"")
+- hook: string (the exact spoken words only. Plain text, max 2 sentences)
+- body: string (the exact spoken words only. Plain text, max 60 words. No JSON objects inside)
+- cta: string (the exact spoken words only. Plain text, 1 sentence)
 - text_overlays: array of 3 impactful short strings to display as kinetic captions
 - b_roll_suggestions: array of 3 concrete B-roll overlay ideas for editing
 - delivery_notes: brief note on voice projection, cadence, and eye contact
 - estimated_length: string (e.g., "27 seconds")
 
+CRITICAL: hook, body, and cta must contain ONLY spoken words. 
 Return ONLY valid JSON. No preamble.`
 
-export async function runScriptwriter({ strategy, transcript, brandContext }) {
+export async function runScriptwriter({ strategy, diagnosis, brandContext }) {
   const userMessage = JSON.stringify({
     strategy: strategy,
-    referenceTranscript: transcript || "No spoken transcript provided; use punchy, confident, authoritative founder speaking style.",
+    referenceTranscript: diagnosis?.extracted_transcript || "No spoken transcript provided; use punchy, confident, authoritative founder speaking style.",
     brandContext: brandContext || "Founder building high-leverage digital solution."
   }, null, 2)
 
-  const result = await generateAiJson({
-    systemPrompt: SYSTEM_PROMPT,
-    userMessage: userMessage
-  })
-
-  return result || {
-    hook: `HOOK (0:00–0:03)\n[Visual: Close-up pointing to screen showing an engagement jump from 0x to 10x]\n"Here is exactly why 90% of founder Reels get skipped in the very first second."`,
-    body: `BODY (0:03–0:20)\n[Visual: Fast cut to side-by-side comparison of a washed-out post vs an optimized high-contrast post]\n"Most founders open by introducing themselves or talking about internal architecture. Nobody cares yet. You must open directly with the transformation. Show them the undeniable result on screen first — then give them the simple 3-step adjustment that made it happen."`,
-    cta: `CALL TO ACTION (0:20–0:26)\n[Visual: Subtle finger point downward toward comment section with bouncing caption]\n"Comment the word 'GROWTH' and I will send you our full 3-agent diagnostic playbook automatically."`,
-    text_overlays: [
-      "90% OF FOUNDERS GET IGNORED",
-      "OPEN WITH THE TRANSFORMATION",
-      "COMMENT 'GROWTH' FOR SYSTEM"
-    ],
-    b_roll_suggestions: [
-      "Screen recording of follower growth graph climbing smoothly",
-      "Side-by-side split screen comparing confusing metrics vs clear visual output",
-      "Large kinetic text overlay popping on screen during the opening hook"
-    ],
-    delivery_notes: "Speak with sharp, upbeat authority. Maintain unbroken lens eye contact during the opening 3-second hook.",
-    estimated_length: "26 seconds"
-  }
+  const result = await callAgent(SYSTEM_PROMPT, userMessage, false)
+  return result
 }
