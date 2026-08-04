@@ -1,43 +1,191 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "Radio Grotesk";
+  src: url("/fonts/RadioGrotesk-Regular.otf") format("opentype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Radio Grotesk";
+  src: url("/fonts/RadioGrotesk-Regular.otf") format("opentype");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Durer";
+  src: url("/fonts/durer-webfont.woff2") format("woff2"),
+       url("/fonts/durer-webfont.woff") format("woff"),
+       url("/fonts/Durer.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Durer";
+  src: url("/fonts/durer-webfont.woff2") format("woff2"),
+       url("/fonts/durer-webfont.woff") format("woff"),
+       url("/fonts/Durer.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
 @theme {
-  --color-background: #F0F4F8;
-  --color-surface: #FFFFFF;
-  --color-border: #E2E8F0;
-  --color-text-primary: #0F172A;
-  --color-text-secondary: #475569;
-  --color-accent: #3B82F6;
-  --color-success: #10B981;
-  --color-error: #EF4444;
-  --color-strategy: #2563EB;
-  --color-script: #8B5CF6;
+  /* ─── Pristine Daylight Palette & High-Contrast Accents ─── */
+  --color-bg-canvas: #F9F9FA;
+  --color-bg-surface: #F0F2F5;
+  --color-text-primary: #111111;
+  --color-text-secondary: #444444;
+  --color-text-muted: #777777;
+  --color-cinematic-red: #E50914;
+  --color-dark-surface: #0D0E12;
+  --color-dark-card: #11131A;
+  --color-dark-border: rgba(255, 255, 255, 0.12);
 
-  --font-display: "Plus Jakarta Sans", "Outfit", sans-serif;
-  --font-body: "Plus Jakarta Sans", "Inter", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  /* ─── Typography Architecture: Statement Headers & High-Legibility UI ─── */
+  --font-display: "Radio Grotesk", sans-serif;
+  --font-durer: "Durer", sans-serif;
+  --font-body: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
-html {
-  scroll-behavior: smooth;
-}
+/* ─── Lenis Smooth Scroll Recommended Styles ─── */
+html.lenis, html.lenis body { height: auto; }
+.lenis.lenis-smooth { scroll-behavior: auto !important; }
+.lenis.lenis-smooth [data-lenis-prevent] { overscroll-behavior: contain; }
+.lenis.lenis-stopped { overflow: hidden; }
+.lenis.lenis-smooth iframe { pointer-events: none; }
 
-body {
-  background-color: var(--color-background);
-  color: var(--color-text-primary);
-  font-family: var(--font-body);
+/* ─── Base Reset & Styling ─── */
+html, body {
+  background-color: #F9F9FA;
+  color: #111111;
+  font-family: "Radio Grotesk", sans-serif;
   margin: 0;
   padding: 0;
-  letter-spacing: -0.015em;
-  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-family: var(--font-display);
-  letter-spacing: -0.035em;
+/* High-contrast cinematic editorial selection */
+::selection {
+  background-color: #E50914;
+  color: #FFFFFF;
+}
+
+
+
+/* ─── Fluid Glass & Liquid Specular Utilities ─── */
+.liquid-glass-pane {
+  background: rgba(255, 255, 255, 0.38);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-top: 1px solid rgba(255, 255, 255, 0.85);
+  border-left: 1px solid rgba(255, 255, 255, 0.6);
+  border-bottom: 1px solid rgba(17, 17, 17, 0.12);
+  border-right: 1px solid rgba(17, 17, 17, 0.08);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.07), 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.liquid-glass-dark-pane {
+  background: rgba(21, 23, 32, 0.65);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.4);
+  box-shadow: 0 25px 70px rgba(0, 0, 0, 0.55);
+}
+
+/* ─── Dynamic SVG Animation Keyframes ─── */
+@keyframes orbital-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+@keyframes orbital-spin-reverse {
+  0% { transform: rotate(360deg); }
+  100% { transform: rotate(0deg); }
+}
+@keyframes cyber-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.05); }
+}
+@keyframes grid-drift {
+  0% { transform: translateY(0px) translateX(0px); }
+  50% { transform: translateY(-15px) translateX(-15px); }
+  100% { transform: translateY(0px) translateX(0px); }
+}
+
+.animate-spin-slow {
+  animation: orbital-spin 45s linear infinite;
+  transform-origin: center center;
+}
+.animate-spin-reverse-slow {
+  animation: orbital-spin-reverse 35s linear infinite;
+  transform-origin: center center;
+}
+.animate-cyber-pulse {
+  animation: cyber-pulse 6s ease-in-out infinite;
+}
+.animate-grid-drift {
+  animation: grid-drift 12s ease-in-out infinite;
+}
+
+/* ─── Awwwards Typography Utilities & Grotesk Spacing ─── */
+.font-display {
+  font-family: "Radio Grotesk", sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.font-durer {
+  font-family: "Durer", sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.font-mono, .font-body {
+  font-family: "Radio Grotesk", sans-serif;
+}
+
+.editorial-heading {
+  font-family: "Radio Grotesk", sans-serif;
+  letter-spacing: -0.02em;
+  line-height: 0.92;
   font-weight: 800;
+}
+
+.durer-heading {
+  font-family: "Durer", sans-serif;
+  letter-spacing: 0.01em;
+  line-height: 0.92;
+  font-weight: 800;
+}
+
+/* ─── Blend Modes for 3D Glass Backgrounds ─── */
+.blend-darken {
+  mix-blend-mode: darken;
+}
+.blend-multiply {
+  mix-blend-mode: multiply;
+}
+
+/* ─── Minimalist Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #F9F9FA;
+}
+::-webkit-scrollbar-thumb {
+  background: #111111;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #E50914;
 }

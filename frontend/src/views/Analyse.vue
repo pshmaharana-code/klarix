@@ -1,6 +1,11 @@
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
-import NavBar from '../components/NavBar.vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { RouterLink } from 'vue-router'
+import { gsap } from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import Lenis from 'lenis'
+
+gsap.registerPlugin(ScrollTrigger)
 
 // Strict UI States exactly as specified
 const STATES = {
@@ -18,6 +23,9 @@ const activeAgentStep = ref(0)
 const errorMessage = ref('')
 const copiedId = ref(null)
 const isTranscriptOpen = ref(false)
+
+let lenis = null
+let tickerCallback = null
 
 // Input Form Reactive State
 const contentType = ref('Reel') // 'Reel' | 'Carousel' | 'Static Post'
@@ -38,6 +46,10 @@ const form = reactive({
   brandContext: ''
 })
 
+// URL Ingestion State
+const instagramUrl = ref('')
+const isUrlConnected = ref(false)
+
 // Real AI Agent Output Stores
 const diagnosis = ref(null)
 const strategy = ref(null)
@@ -56,6 +68,7 @@ const onDragLeave = () => {
 const onDrop = (e) => {
   e.preventDefault()
   isDragging.value = false
+  if (isUrlConnected.value) return
   const files = e.dataTransfer.files
   if (files && files.length > 0) handleFiles(files)
 }
@@ -86,6 +99,7 @@ const handleFiles = (fileList) => {
 }
 
 const triggerFileInput = () => {
+  if (isUrlConnected.value) return
   fileInput.value?.click()
 }
 
@@ -115,6 +129,18 @@ const copyText = (text, id) => {
   setTimeout(() => {
     if (copiedId.value === id) copiedId.value = null
   }, 2500)
+}
+
+// Smooth Scroll Navigation Helper
+const scrollToSection = (id) => {
+  const element = document.getElementById(id)
+  if (element) {
+    if (lenis && typeof lenis.scrollTo === 'function') {
+      lenis.scrollTo(element, { duration: 1.4, offset: 0 })
+    } else {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }
 }
 
 // FORMATTERS FOR COPYING REAL AI RESPONSES
@@ -160,8 +186,8 @@ const copyScript = computed(() => {
 
 // MAIN AI ORCHESTRATION VIA BACKEND API REQUEST
 const runAnalysis = async () => {
-  if (uploadedFiles.value.length === 0 && (!form.views || String(form.views).trim() === '')) {
-    errorMessage.value = "Missing Content or Data: Please attach your carousel slides, reel, or image post, or provide your performance metrics (Views / Reach *) before running an analysis."
+  if (uploadedFiles.value.length === 0 && !isUrlConnected.value && (!form.views || String(form.views).trim() === '')) {
+    errorMessage.value = "Missing Content or Data: Please attach your carousel slides, reel, image post, connect a media URL, or provide your performance metrics before running an analysis."
     currentState.value = STATES.ERROR
     return
   }
@@ -173,13 +199,15 @@ const runAnalysis = async () => {
   
   currentState.value = STATES.LOADING
   activeAgentStep.value = 1
-  loadingStepText.value = "Transmitting data to secure Klarix server..."
+  loadingStepText.value = "Transmitting telemetry to secure Klarix server..."
 
   try {
-    // Package data to send to your Express Backend
     const formData = new FormData()
     if (uploadedFiles.value.length > 0) {
       formData.append('mediaFile', uploadedFiles.value[0].file)
+    }
+    if (isUrlConnected.value && instagramUrl.value.trim() !== '') {
+      formData.append('url', instagramUrl.value.trim())
     }
     formData.append('contentType', contentType.value)
     formData.append('platform', platform.value)
@@ -193,23 +221,21 @@ const runAnalysis = async () => {
     formData.append('followersGained', form.followersGained || '')
     formData.append('brandContext', form.brandContext || '')
 
-    // Fake UX Timer to make the UI look active while the backend does all the work
     const uxTimer = setInterval(() => {
       if (activeAgentStep.value < 3) {
         activeAgentStep.value++
         loadingStepText.value = activeAgentStep.value === 2 
-          ? "Agent 2: Building Strategy & Trend Insights..." 
-          : "Agent 3: Synthesizing Ready-to-Record Script..."
+          ? "Node 02: Correlating Retention Curves & Competitor Gaps..." 
+          : "Node 03: Synthesizing High-Velocity Viral Script..."
       }
     }, 7000)
 
-    // Call your local backend server
     const response = await fetch('http://localhost:3001/api/analyse', {
       method: 'POST',
       body: formData
     })
 
-    clearInterval(uxTimer) // Stop the UX timer
+    clearInterval(uxTimer)
 
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}))
@@ -219,7 +245,6 @@ const runAnalysis = async () => {
     const data = await response.json()
 
     if (data.success) {
-      // Map backend outputs to frontend UI state
       diagnosis.value = data.raw.diagnosis
       strategy.value = data.raw.strategy
       script.value = data.raw.scriptOutput
@@ -237,174 +262,470 @@ const runAnalysis = async () => {
   }
 }
 
-onMounted(() => {
+// ─── INSTAGRAM URL INGESTION HANDLERS ───
+const connectUrl = () => {
+  if (uploadedFiles.value.length > 0) {
+    alert("Please remove the uploaded media files below before connecting a URL asset.")
+    return
+  }
+  if (!instagramUrl.value || !instagramUrl.value.trim()) {
+    alert("Please paste a valid Instagram Reel or Post URL first.")
+    return
+  }
+  isUrlConnected.value = true
+}
+
+const clearUrl = () => {
+  instagramUrl.value = ''
+  isUrlConnected.value = false
+}
+
+onMounted(async () => {
+  window.scrollTo(0, 0)
+  await nextTick()
   setTimeout(() => {
     isLoaded.value = true
   }, 100)
+
+  // 1. Lenis Smooth Scroll Initialization
+  lenis = new Lenis({
+    duration: 1.3,
+    easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+    smoothWheel: true,
+    orientation: 'vertical',
+    gestureOrientation: 'vertical',
+    smoothTouch: false,
+  })
+  lenis.on('scroll', ScrollTrigger.update)
+  tickerCallback = (time) => {
+    if (lenis) lenis.raf(time * 1000)
+  }
+  gsap.ticker.add(tickerCallback)
+  gsap.ticker.lagSmoothing(0, 0)
+
+  // Immediately force virtual scroll & viewport to very top (0px) on load
+  if (lenis && typeof lenis.scrollTo === 'function') {
+    lenis.scrollTo(0, { immediate: true })
+  }
+  window.scrollTo(0, 0)
+})
+
+onUnmounted(() => {
+  if (lenis) lenis.destroy()
+  if (tickerCallback) gsap.ticker.remove(tickerCallback)
+  ScrollTrigger.getAll().forEach(trigger => trigger.kill())
 })
 </script>
 
 <template>
-  <div class="relative min-h-screen bg-[#050811] text-slate-100 font-body overflow-x-hidden selection:bg-indigo-500/30">
-    
-    <!-- Background Ambient Glows -->
-    <div class="fixed top-[-10%] left-[-10%] w-[500px] h-[500px] bg-indigo-600/15 rounded-full blur-[140px] pointer-events-none z-0"></div>
-    <div class="fixed bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-purple-600/15 rounded-full blur-[140px] pointer-events-none z-0"></div>
-    <div class="fixed top-[40%] right-[15%] w-[400px] h-[400px] bg-rose-600/10 rounded-full blur-[130px] pointer-events-none z-0"></div>
+  <!-- Executive 2026 Warm Beige-White Daylight Studio (Synced with Landing Page Light Theme & Premium Agency Aesthetics) -->
+  <div class="relative w-full min-h-screen bg-[#F4F1EC] text-[#141518] font-display overflow-x-hidden selection:bg-[#E50914] selection:text-white">
 
-    <NavBar />
+    <!-- ─── ARCHITECTURAL DAYLIGHT GLASS NAVIGATION SLAB ─── -->
+    <div class="fixed top-0 left-0 w-full z-50 pointer-events-none pt-4 sm:pt-6 px-4 sm:px-12 transition-all duration-300">
+      <header class="max-w-[92rem] mx-auto pointer-events-auto bg-[#FAFAF7]/85 backdrop-blur-2xl rounded-2xl transition-all duration-500 hover:bg-[#FFFFFF]/95 border border-[#E5E0D6] shadow-[0_15px_45px_rgba(20,21,24,0.06)]">
+        <div class="px-6 sm:px-10 h-20 flex items-center justify-between">
+          
+          <!-- Brand Logo Reference styled with clean Radio Grotesk tracking -->
+          <RouterLink to="/" class="interactive-hover flex items-center gap-4 group">
+            <img
+              src="/brand_logo.jpeg"
+              alt="Klarix Logo"
+              class="h-11 w-auto object-contain transition-transform duration-500 group-hover:scale-105 rounded-lg border border-[#E5E0D6]/60 shadow-sm"
+            />
+            <span class="font-display font-black tracking-[-0.04em] text-2xl sm:text-3xl text-[#141518] uppercase">
+              Klarix
+            </span>
+          </RouterLink>
 
-    <main class="relative z-10 max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-10 pt-28 sm:pt-32 pb-24">
+          <!-- Executive Studio Indicators & Navigation -->
+          <div class="flex items-center gap-4 sm:gap-8">
+            <RouterLink 
+              to="/" 
+              class="interactive-hover font-display text-xs font-black uppercase tracking-[0.2em] text-[#555862] hover:text-[#E50914] transition-colors flex items-center gap-2"
+            >
+              <span>← Return Home</span>
+            </RouterLink>
+          </div>
+
+        </div>
+      </header>
+    </div>
+
+    <!-- ─── A. HERO STUDIO ARCHITECTURE (FULL-SCREEN CINEMA BANNER WITH SEAMLESS SECTION BLENDING) ─── -->
+    <section class="relative w-full min-h-[92vh] pt-36 sm:pt-44 pb-28 px-6 sm:px-12 flex items-center justify-start overflow-hidden">
       
-      <!-- Header Section -->
-      <div 
-        class="text-center md:text-left mb-10 sm:mb-12 transition-all duration-[900ms] ease-[cubic-bezier(0.16,1,0.3,1)]"
-        :class="isLoaded ? 'translate-y-0 opacity-100' : '-translate-y-12 opacity-0'"
-      >
-        <h1 class="text-3xl sm:text-4xl md:text-5xl font-extrabold font-display tracking-[-0.03em] text-white">
-          Social Performance <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-rose-400">Analyser</span>
-        </h1>
-        <p class="text-slate-400 text-sm sm:text-base max-w-2xl mt-2 font-normal">
-          Ingest your social assets and analytics below. Our specialized 3-agent AI pipeline extracts retention bottlenecks and crafts your next high-performing post.
-        </p>
+      <!-- 1. FULL-SCREEN AMBIENT BANNER VIDEO (ROTATING GLOBE CANVAS) -->
+      <div class="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+        <video
+          autoplay
+          muted
+          loop
+          playsinline
+          class="w-full h-full object-cover object-center filter contrast-[1.08] saturate-[1.15] scale-105 transition-transform duration-1000"
+        >
+          <source src="/videos/hero-globe.mp4" type="video/mp4" />
+        </video>
+        <!-- Editorial Daylight Overlay Veil for High-Contrast Text Legibility -->
+        <div class="absolute inset-0 bg-gradient-to-r from-[#FAFAF6] via-[#FAFAF6]/75 to-transparent/30"></div>
+        <!-- Top transition blending from navigation header -->
+        <div class="absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-[#FAFAF6] via-[#FAFAF6]/80 to-transparent"></div>
+        <!-- Seamless Kinetic Blending Gradient dissolving directly into Section B -->
+        <div class="absolute inset-x-0 bottom-0 h-52 bg-gradient-to-b from-transparent via-[#F4F1EC]/85 to-[#F4F1EC] z-10"></div>
+      </div>
+      
+      <!-- Subtle Structural Engineering Background Grid over veil -->
+      <div class="absolute inset-0 z-0 pointer-events-none opacity-25 bg-grid-pattern"></div>
+      
+      <!-- Architectural Soft Golden Ambient Warm Light Blobs -->
+      <div class="absolute -top-32 -left-32 w-[600px] h-[600px] bg-[radial-gradient(circle,rgba(229,9,20,0.08)_0%,transparent_70%)] pointer-events-none blur-3xl z-0"></div>
+      <div class="absolute top-1/3 right-10 w-[700px] h-[700px] bg-[radial-gradient(circle,rgba(0,163,196,0.09)_0%,transparent_70%)] pointer-events-none blur-3xl z-0"></div>
+
+      <div class="max-w-[92rem] mx-auto w-full relative z-10 flex flex-col justify-center">
+        
+        <!-- Monumental Proportional Typography in Warm Charcoal over Cinema Banner -->
+        <div class="max-w-4xl space-y-8 text-left z-10">
+
+          <h1 class="durer-heading text-[11vw] sm:text-[6.5rem] lg:text-[7.5rem] text-[#141518] uppercase select-none tracking-[0.01em] leading-[0.88]">
+            Performance <br />
+            <span class="flex items-baseline gap-4 flex-wrap mt-2">
+              <span>Diagnostic</span>
+            </span>
+          </h1>
+
+          <div class="flex items-baseline gap-4 pt-1">
+            <span class="font-display text-[7vw] sm:text-[4.5rem] lg:text-[5.8rem] font-black tracking-[-0.03em] text-[#E50914] normal-case drop-shadow-[0_4px_15px_rgba(229,9,20,0.25)]">
+              Studio.
+            </span>
+          </div>
+
+          <p class="font-display text-lg sm:text-2xl text-[#3E424D] font-semibold leading-relaxed tracking-[-0.01em] max-w-2xl pt-2">
+            We discarded conversational guesswork for empirical precision. Ingest your media assets and analytics into our 3-node daylight architecture to diagnose retention fractures and engineer algorithmic dominance.
+          </p>
+
+          <div class="pt-6 flex flex-wrap items-center gap-6 font-display">
+            <a 
+              href="#ingestion-console" 
+              @click.prevent="scrollToSection('ingestion-console')"
+              class="px-9 py-5 rounded-2xl bg-[#E50914] hover:bg-[#141518] text-white font-black text-xs sm:text-sm uppercase tracking-[0.2em] transition-all duration-300 shadow-[0_15px_35px_rgba(229,9,20,0.35)] hover:shadow-[0_18px_45px_rgba(20,21,24,0.25)] hover:translate-y-[-2px] flex items-center gap-3"
+            >
+              <span>Initialize Ingestion Deck</span>
+              <span class="text-lg animate-bounce">↓</span>
+            </a>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ─── B. THE COMMAND CONSOLE (DYNAMIC TEXTURED DAYLIGHT INGESTION STUDIO WITH KINETIC ROLLING VIDEO) ─── -->
+    <section id="ingestion-console" class="relative w-full py-28 sm:py-36 bg-[#F4F1EC] px-6 sm:px-12 overflow-hidden border-b border-[#E3DDD1]">
+      
+      <!-- ─── RICH BACKGROUND ARCHITECTURAL TEXTURING & SEAMLESS VIDEO BLENDING ─── -->
+      <!-- 1. Ambient Rolling Sphere Video blending from Hero banner into Console -->
+      <div class="absolute inset-0 z-0 pointer-events-none flex items-center justify-center overflow-hidden opacity-90">
+        <video
+          autoplay
+          muted
+          loop
+          playsinline
+          class="w-full h-full object-cover filter contrast-[1.08] brightness-[1.02]"
+        >
+          <source src="/videos/section-b-rolling.mp4" type="video/mp4" />
+        </video>
+        <!-- Top blending gradient completing the smooth transition from Hero Banner -->
+        <div class="absolute inset-x-0 top-0 h-52 bg-gradient-to-b from-[#F4F1EC] via-[#F4F1EC]/80 to-transparent"></div>
+        <!-- Bottom structural integration gradient -->
+        <div class="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-[#EAE6DD] via-[#EAE6DD]/80 to-transparent"></div>
       </div>
 
-      <!-- WORKSPACE GRID -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start">
+      <!-- 2. Permanent Structural Micro-Grid over entire section -->
+      <div class="absolute inset-0 z-0 pointer-events-none bg-grid-pattern opacity-40"></div>
+      
+      <!-- 3. Colossal Faded Watermark Typography behind cards (Kept exactly as requested) -->
+      <div class="absolute top-12 left-1/2 -translate-x-1/2 z-0 pointer-events-none select-none overflow-hidden w-full text-center">
+        <span class="font-durer text-[14vw] font-black uppercase tracking-widest text-[#141518]/15 block leading-none">
+          INGESTION
+          PAYLOAD
+        </span>
+      </div>
+      <div class="absolute bottom-20 left-4 sm:left-12 z-0 pointer-events-none select-none opacity-30">
+        <span class="font-durer text-[10vw] font-black uppercase tracking-tighter text-[#141518] block leading-none">
+          TELEMETRY
+        </span>
+      </div>
+
+      <!-- 4. Dynamic Architectural Side Index & Vertical Ruling Line -->
+      <div class="absolute left-6 top-1/4 bottom-1/4 w-px bg-gradient-to-b from-transparent via-[#141518]/20 to-transparent hidden xl:block z-10"></div>
+      <div class="absolute left-8 top-1/3 hidden xl:flex flex-col items-center gap-6 text-[#141518]/60 font-display z-10 select-none">
+      </div>
+
+      <!-- 5. Soft Ambient Warm Highlights -->
+      <div class="absolute top-1/2 left-1/4 w-[800px] h-[800px] bg-[radial-gradient(circle,rgba(252,250,246,0.6)_0%,transparent_60%)] pointer-events-none blur-3xl z-0"></div>
+      <div class="absolute bottom-1/4 right-10 w-[600px] h-[600px] bg-[radial-gradient(circle,rgba(229,9,20,0.05)_0%,transparent_70%)] pointer-events-none blur-3xl z-0"></div>
+
+      <div class="max-w-[92rem] mx-auto relative z-10">
         
-        <!-- ================= LEFT COLUMN: INPUT ENGINE ================= -->
-        <div 
-          class="lg:col-span-6 space-y-8 transition-all duration-[1000ms] delay-100 ease-[cubic-bezier(0.16,1,0.3,1)]"
-          :class="isLoaded ? 'translate-x-0 opacity-100' : '-translate-x-32 opacity-0'"
-        >
-          <div class="p-6 sm:p-9 rounded-[2.5rem] bg-[#0b0f1b]/90 backdrop-blur-2xl border border-slate-800/80 shadow-[0_20px_60px_rgba(0,0,0,0.4)] hover:shadow-[0_0_35px_rgba(99,102,241,0.25)] hover:border-indigo-500/40 transition-all duration-500 space-y-9">
-            
-            <!-- STEP 1: UPLOAD CONTENT -->
-            <div class="space-y-4">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                  <div class="w-8 h-8 rounded-xl bg-indigo-600/20 border border-indigo-500/50 flex items-center justify-center text-indigo-400 font-mono font-bold text-sm">1</div>
-                  <h2 class="text-lg sm:text-xl font-bold font-display text-white tracking-tight">Upload Your Content</h2>
+        <!-- Section Title Slate -->
+        <div class="mb-16 sm:mb-24 flex flex-col md:flex-row md:items-end justify-between gap-8 border-b border-[#D8D2C4] pb-10">
+          <div>
+            <span class="font-display text-xs font-black tracking-[0.25em] uppercase text-[#E50914] block mb-3">
+              [ NODE CONSOLE // EMPIRICAL UPLOAD ]
+            </span>
+            <h2 class="font-durer text-5xl sm:text-7xl font-black tracking-[0.01em] text-[#141518] uppercase leading-[0.9]">
+              Data <span class="text-[#E50914]">Ingestion.</span>
+            </h2>
+          </div>
+          <p class="font-display text-lg sm:text-2xl text-[#4A4E5A] font-semibold max-w-xl leading-relaxed tracking-[-0.01em]">
+            Upload media artifacts and numeric telemetry into our bright agency console. Powered by real-time spatial analytics and empirical scoring engines.
+          </p>
+        </div>
+
+        <div class="max-w-5xl mx-auto space-y-16">
+          
+          <!-- ─── SLAB 01: MEDIA INGESTION NODE (DAYLIGHT LIQUID IVORY GLASS WITH ARIAL UI TYPOGRAPHY) ─── -->
+          <div 
+            class="interactive-hover w-full rounded-[2.5rem] bg-[#FAFAF6]/95 backdrop-blur-xl text-[#141518] p-8 sm:p-14 lg:p-20 transition-all duration-500 overflow-hidden shadow-[0_30px_80px_rgba(20,21,24,0.08)] hover:shadow-[0_35px_100px_rgba(20,21,24,0.12)] border border-[#E3E0D6] relative group/slate card-ui"
+          >
+            <!-- Top Specular White Hairline -->
+            <div class="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-[#E50914]/80 to-transparent opacity-80"></div>
+
+            <!-- Subtle Interior Corner Ornamentation -->
+            <div class="absolute top-6 right-6 font-mono text-[11px] font-bold text-[#9DA1AE] border border-[#DBD6CA] px-3 py-1 rounded-md hidden sm:block uppercase tracking-widest">
+              NODE_ID: M-IN_2026
+            </div>
+
+            <div class="relative z-10 space-y-8">
+              <!-- Node Header Motif -->
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E3DEDB] pb-6">
+                <div class="flex items-center gap-4">
+                  <span class="text-5xl sm:text-6xl font-durer font-extrabold text-[#E50914] tracking-normal select-none">01</span>
+                  <span class="h-8 w-[2px] bg-[#DBD5C8]"></span>
+                  <span class="card-ui text-sm sm:text-base font-extrabold tracking-[0.08em] uppercase text-[#141518]">Ingestion Node // Media Artifacts</span>
                 </div>
-                <span v-if="uploadedFiles.length > 1" class="text-[11px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 px-3 py-1 rounded-full border border-indigo-500/40 animate-pulse">
-                  📸 Carousel Deck ({{ uploadedFiles.length }} Slides)
+                <span v-if="uploadedFiles.length > 1" class="text-xs sm:text-sm card-ui font-extrabold uppercase tracking-wide bg-[#E50914]/15 text-[#E50914] px-4 py-2 rounded-xl border border-[#E50914]/30 shadow-sm animate-pulse">
+                  Carousel Deck Active ({{ uploadedFiles.length }} Slides)
                 </span>
               </div>
-              
-              <div 
+
+              <!-- ─── FAST URL INGESTION BAR (INSTANT LINK CONNECTION) ─── -->
+              <div class="p-6 sm:p-8 rounded-3xl bg-[#F3EFEB] border border-[#D5D0C2] shadow-inner space-y-4">
+                <div class="flex items-center justify-between">
+                  <label class="block card-ui text-sm sm:text-base font-bold text-[#141518] uppercase tracking-wider">
+                    Paste Instagram Reel or Post URL
+                  </label>
+                  <span v-if="uploadedFiles.length === 0" class="text-xs card-ui font-extrabold text-[#E50914] bg-[#E50914]/10 px-3 py-1 rounded-lg border border-[#E50914]/20 uppercase">
+                    Recommended for speed
+                  </span>
+                  <span v-else class="text-xs card-ui font-extrabold text-[#7A7F8E] bg-[#EBE7DF] px-3 py-1 rounded-lg border border-[#D5D0C2] uppercase">
+                    Disabled
+                  </span>
+                </div>
+
+                <!-- State 1: Disabled because File is uploaded -->
+                <div v-if="uploadedFiles.length > 0" class="p-5 sm:p-6 rounded-2xl bg-[#EBE7DF]/80 border border-[#D5D0C2] flex items-center justify-between gap-4 card-ui opacity-90">
+                  <div class="flex items-center gap-4 min-w-0 text-left">
+                    <div class="w-12 h-12 rounded-xl bg-[#DFD9CE] text-[#7A7F8E] flex items-center justify-center text-xl shrink-0">🔒</div>
+                    <div class="min-w-0">
+                      <div class="text-sm font-extrabold text-[#7A7F8E] uppercase tracking-wider">URL Ingestion Disabled</div>
+                      <div class="text-xs sm:text-sm font-semibold text-[#5C606E] truncate">A local media file is actively attached below. Remove the uploaded asset to enable URL ingestion.</div>
+                    </div>
+                  </div>
+                  <span class="text-xs font-extrabold bg-[#DFD9CE] text-[#5C606E] px-4 py-2 rounded-xl uppercase tracking-wider shrink-0 hidden sm:block">Locked</span>
+                </div>
+
+                <!-- State 2: Active & Not Connected -->
+                <div v-else-if="!isUrlConnected" class="flex flex-col sm:flex-row items-stretch gap-4">
+                  <input
+                    v-model="instagramUrl"
+                    type="url"
+                    placeholder="https://www.instagram.com/reels/C8x... or /p/..."
+                    class="flex-1 bg-white text-[#141518] card-ui text-base sm:text-lg font-bold px-6 py-4 rounded-2xl border border-[#D5D0C2] focus:border-[#E50914] focus:outline-none transition-all shadow-sm placeholder-[#8A8F9E]"
+                    @keydown.enter.prevent="connectUrl"
+                  />
+                  <button
+                    @click="connectUrl"
+                    type="button"
+                    class="px-8 py-4 rounded-2xl bg-[#E50914] hover:bg-[#141518] text-white card-ui text-sm sm:text-base font-extrabold uppercase tracking-wider transition-all duration-300 shadow-[0_15px_35px_rgba(229,9,20,0.3)] hover:shadow-[0_15px_35px_rgba(20,21,24,0.3)] shrink-0 flex items-center justify-center gap-3"
+                  >
+                    <span>Connect URL Asset</span>
+                    <span>→</span>
+                  </button>
+                </div>
+
+                <!-- State 3: URL Connected & Locked -->
+                <div v-else class="p-5 rounded-2xl bg-white border border-[#E50914]/30 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 card-ui">
+                  <div class="flex items-center gap-4 min-w-0">
+                    <div class="w-12 h-12 rounded-xl bg-[#E50914]/10 flex items-center justify-center text-xl shrink-0">🎬</div>
+                    <div class="min-w-0 text-left">
+                      <div class="text-sm font-bold text-[#E50914] uppercase tracking-wider">URL Asset Locked for Diagnosis</div>
+                      <div class="text-base font-extrabold text-[#141518] truncate max-w-md sm:max-w-lg">{{ instagramUrl }}</div>
+                    </div>
+                  </div>
+                  <button @click="clearUrl" type="button" title="Clear connected URL and re-enable file uploads" class="px-7 py-3.5 rounded-xl bg-[#141518] hover:bg-[#E50914] text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider transition-colors shrink-0 shadow-md">
+                    Clear URL
+                  </button>
+                </div>
+              </div>
+
+              <!-- Divider Motif -->
+              <div class="flex items-center gap-4 py-2">
+                <div class="flex-1 h-px bg-[#D5D0C2]"></div>
+                <span class="card-ui text-xs font-bold text-[#7A7F8E] uppercase tracking-widest">or upload media file directly below</span>
+                <div class="flex-1 h-px bg-[#D5D0C2]"></div>
+              </div>
+
+              <!-- State 1: Disabled Dropzone because URL is connected -->
+              <div v-if="isUrlConnected" class="border-2 border-dashed border-[#D5D0C2] bg-[#EBE7DF]/60 rounded-3xl p-10 sm:p-16 text-center cursor-not-allowed transition-all opacity-90 shadow-inner">
+                <div class="max-w-xl mx-auto space-y-4 card-ui">
+                  <div class="w-16 h-16 rounded-3xl bg-[#DFD9CE] border border-[#D5D0C2] text-[#7A7F8E] flex items-center justify-center mx-auto text-3xl shadow-sm">
+                    🔒
+                  </div>
+                  <div>
+                    <p class="font-durer text-2xl sm:text-4xl font-bold uppercase tracking-[0.02em] text-[#7A7F8E]">File Upload Disabled</p>
+                    <p class="text-base sm:text-lg text-[#5C606E] mt-2.5 font-medium leading-relaxed">
+                      An Instagram Reel URL is actively connected above as your primary media source. Click <strong class="text-[#141518] underline cursor-pointer hover:text-[#E50914]" @click.stop="clearUrl">"Clear URL"</strong> above to upload a local media file directly.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- State 2: Interactive Dropzone with Premium Warm Tactile Response -->
+              <div v-else
                 @dragover="onDragOver"
                 @dragleave="onDragLeave"
                 @drop="onDrop"
                 @click="triggerFileInput"
-                :class="isDragging ? 'border-indigo-500 bg-indigo-500/10 shadow-[0_0_30px_rgba(99,102,241,0.3)]' : 'border-slate-800 hover:border-slate-700 bg-[#070a14]'"
-                class="relative border-2 border-dashed rounded-3xl p-6 sm:p-8 text-center cursor-pointer transition-all duration-300 group overflow-hidden"
+                :class="isDragging ? 'border-[#E50914] bg-[#E50914]/10 scale-[0.99]' : 'border-[#D5D0C2] hover:border-[#E50914] bg-[#F3EFEB] hover:bg-[#EFEAE4]'"
+                class="relative border-2 border-dashed rounded-3xl p-8 sm:p-16 text-center cursor-pointer transition-all duration-500 overflow-hidden shadow-inner"
               >
                 <input ref="fileInput" @change="onFileChange" type="file" multiple accept="video/mp4,video/quicktime,image/jpeg,image/png,image/webp" class="hidden" />
 
-                <!-- Files Loaded Preview Deck -->
-                <div v-if="uploadedFiles.length > 0" class="space-y-4" @click.stop="triggerFileInput">
+                <!-- Loaded Asset Preview Deck -->
+                <div v-if="uploadedFiles.length > 0" class="space-y-6" @click.stop="triggerFileInput">
                   
-                  <!-- CASE 1: Single Video or Single Image -->
-                  <div v-if="uploadedFiles.length === 1" class="space-y-3">
-                    <div class="relative w-full max-h-[340px] rounded-2xl overflow-hidden bg-black/50 border border-slate-700 mx-auto flex items-center justify-center shadow-lg">
-                      <video v-if="uploadedFiles[0].category === 'video'" :src="uploadedFiles[0].url" controls class="max-h-[340px] w-auto mx-auto rounded-xl"></video>
-                      <img v-else :src="uploadedFiles[0].url" class="max-h-[340px] w-auto mx-auto rounded-xl object-contain" alt="Preview" />
+                  <!-- Single Video or Image -->
+                  <div v-if="uploadedFiles.length === 1" class="space-y-5">
+                    <div class="relative w-full max-h-[420px] rounded-2xl overflow-hidden bg-black/95 border border-[#D5D0C2] mx-auto flex items-center justify-center shadow-2xl p-2">
+                      <video v-if="uploadedFiles[0].category === 'video'" :src="uploadedFiles[0].url" controls class="max-h-[390px] w-auto mx-auto rounded-xl shadow-lg"></video>
+                      <img v-else :src="uploadedFiles[0].url" class="max-h-[390px] w-auto mx-auto rounded-xl object-contain shadow-lg" alt="Preview" />
+                      <span class="absolute top-4 left-4 bg-black/85 backdrop-blur-md px-4 py-2 rounded-lg border border-white/20 text-xs sm:text-sm card-ui font-extrabold tracking-wider uppercase text-[#00E5FF] shadow-sm">
+                        Validated Asset
+                      </span>
                     </div>
 
-                    <div class="flex items-center justify-between bg-slate-900/90 px-4 py-3 rounded-2xl border border-slate-800 text-left">
-                      <div class="truncate pr-3">
-                        <p class="text-xs font-semibold text-slate-200 truncate">{{ uploadedFiles[0].name }}</p>
-                        <p class="text-[10px] font-mono text-slate-400">{{ (uploadedFiles[0].size / (1024 * 1024)).toFixed(2) }} MB &middot; {{ uploadedFiles[0].type }}</p>
+                    <div class="flex items-center justify-between bg-[#FCFCFA] px-7 py-5 rounded-2xl border border-[#DFDAD0] text-left card-ui shadow-sm">
+                      <div class="truncate pr-4">
+                        <p class="text-lg sm:text-xl font-extrabold text-[#141518] truncate">{{ uploadedFiles[0].name }}</p>
+                        <p class="text-xs sm:text-sm text-[#E50914] font-extrabold uppercase tracking-wide mt-1.5">{{ (uploadedFiles[0].size / (1024 * 1024)).toFixed(2) }} MB &middot; {{ uploadedFiles[0].type }}</p>
                       </div>
-                      <button @click="(e) => removeFile(0, e)" type="button" class="text-xs text-rose-400 hover:text-rose-300 font-semibold px-2.5 py-1.5 rounded-lg hover:bg-rose-500/10 transition-colors shrink-0">
-                        Remove
+                      <button @click="(e) => removeFile(0, e)" type="button" class="px-7 py-3.5 rounded-xl bg-[#E50914]/15 hover:bg-[#E50914] hover:text-white text-[#E50914] card-ui text-sm sm:text-base font-extrabold uppercase tracking-wide transition-all shadow-sm border border-[#E50914]/40 hover:border-transparent shrink-0">
+                        Remove Asset
                       </button>
                     </div>
                   </div>
 
-                  <!-- CASE 2: Multi-Slide Carousel Gallery -->
-                  <div v-else class="space-y-4">
-                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[360px] overflow-y-auto p-1 text-left">
-                      <div v-for="(item, idx) in uploadedFiles" :key="idx" class="relative group/card rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 hover:border-indigo-500/50 transition-all shadow-sm">
-                        <div class="h-28 w-full bg-black/40 overflow-hidden flex items-center justify-center relative">
-                          <img v-if="item.category === 'image'" :src="item.url" class="w-full h-full object-cover group-hover/card:scale-105 transition-transform" />
+                  <!-- Multi-Slide Carousel Gallery -->
+                  <div v-else class="space-y-6">
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 max-h-[420px] overflow-y-auto p-2 text-left">
+                      <div v-for="(item, idx) in uploadedFiles" :key="idx" class="relative group/card rounded-2xl overflow-hidden bg-[#FAFAF8] border border-[#DFDAD0] hover:border-[#E50914] transition-all shadow-md">
+                        <div class="h-36 w-full bg-black/90 overflow-hidden flex items-center justify-center relative">
+                          <img v-if="item.category === 'image'" :src="item.url" class="w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-500" />
                           <video v-else :src="item.url" class="w-full h-full object-cover"></video>
-                          <span class="absolute top-1.5 left-1.5 px-2 py-0.5 rounded bg-slate-950/80 backdrop-blur border border-slate-700 text-[9px] font-mono font-bold text-indigo-300">
+                          <span class="absolute top-2.5 left-2.5 px-3 py-1 rounded-md bg-black/85 backdrop-blur-md border border-white/20 text-xs card-ui font-extrabold text-[#E50914] uppercase tracking-wider shadow-sm">
                             Slide {{ idx + 1 }}
                           </span>
                         </div>
-                        <div class="p-2 flex items-center justify-between bg-[#080b15]">
-                          <span class="text-[10px] text-slate-400 truncate w-24">{{ item.name }}</span>
-                          <button @click="(e) => removeFile(idx, e)" type="button" title="Remove Slide" class="text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 p-1 rounded transition-colors">
+                        <div class="p-4 flex items-center justify-between bg-[#F4F1EA] border-t border-[#DFDAD0] card-ui">
+                          <span class="text-sm sm:text-base text-[#141518] font-bold truncate w-28">{{ item.name }}</span>
+                          <button @click="(e) => removeFile(idx, e)" type="button" title="Remove Slide" class="text-white bg-[#E50914]/80 hover:bg-[#E50914] p-1.5 rounded-lg transition-all font-bold text-sm px-3 shadow-sm">
                             ✕
                           </button>
                         </div>
                       </div>
                     </div>
 
-                    <div class="flex items-center justify-between bg-indigo-950/40 border border-indigo-500/30 px-4 py-2.5 rounded-2xl">
-                      <span class="text-xs text-indigo-200 font-medium">Click box to attach more slides or slides in sequence</span>
-                      <button @click="clearAllFiles" type="button" class="text-xs text-rose-400 hover:text-rose-300 font-bold px-3 py-1 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-all">
-                        Clear All
+                    <div class="flex items-center justify-between bg-[#FCFCFA] border border-[#DFDAD0] px-7 py-5 rounded-2xl card-ui shadow-sm">
+                      <span class="text-sm sm:text-base text-[#4A4E5A] font-extrabold uppercase tracking-wide">Tap container to append sequence slides</span>
+                      <button @click="clearAllFiles" type="button" class="text-sm sm:text-base text-white font-extrabold uppercase tracking-wider px-7 py-3.5 rounded-xl bg-[#141518] hover:bg-[#E50914] transition-all shadow-md">
+                        Clear Deck
                       </button>
                     </div>
                   </div>
 
                 </div>
 
-                <!-- Empty State -->
-                <div v-else class="space-y-3 py-6">
-                  <div class="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 flex items-center justify-center mx-auto group-hover:scale-110 group-hover:bg-indigo-500/20 transition-all duration-300 shadow-[0_0_15px_rgba(99,102,241,0.2)]">
-                    <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                <!-- Empty State (Pure Agency Prestige, Warm Ivory Tone) -->
+                <div v-else class="space-y-6 py-12 card-ui">
+                  <div class="w-20 h-20 rounded-3xl bg-[#FFFFFF] border border-[#DBD6C8] text-[#E50914] flex items-center justify-center mx-auto group-hover:scale-110 group-hover:bg-[#E50914] group-hover:text-white group-hover:border-[#E50914] transition-all duration-500 shadow-[0_10px_30px_rgba(20,21,24,0.06)] group-hover:shadow-[0_15px_40px_rgba(229,9,20,0.35)]">
+                    <svg class="w-9 h-9" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
                     </svg>
                   </div>
                   <div>
-                    <p class="text-sm font-bold text-white">Drag & drop your post, reel, or multiple carousel slides here</p>
-                    <p class="text-xs text-slate-400 mt-1">Or click to browse from your device (select multiple images for Carousels)</p>
+                    <p class="font-durer text-2xl sm:text-4xl font-bold uppercase tracking-[0.02em] text-[#141518]">Ingest Performance Asset</p>
+                    <p class="text-base sm:text-lg lg:text-xl text-[#3E424D] mt-3 font-medium leading-relaxed max-w-2xl mx-auto card-ui">Drop Reel video, carousel slide sequences, or static visual artifacts directly into this high-velocity studio</p>
                   </div>
-                  <div class="flex items-center justify-center gap-2 pt-2 text-[10px] text-slate-500 font-mono uppercase tracking-wider">
-                    <span class="px-2 py-1 rounded-md bg-slate-900 border border-slate-800">Video &middot; MP4, MOV (max 50MB)</span>
-                    <span class="px-2 py-1 rounded-md bg-slate-900 border border-slate-800">Carousels &middot; Multiple JPG, PNG, WEBP</span>
+                  <div class="flex flex-wrap items-center justify-center gap-4 pt-4 text-sm sm:text-base font-bold uppercase tracking-wide text-[#2A2D35] card-ui">
+                    <span class="px-6 py-3 rounded-xl bg-white border border-[#DDD8CC] shadow-sm flex items-center gap-2.5">
+                      Video &middot; MP4 / MOV
+                    </span>
+                    <span class="px-6 py-3 rounded-xl bg-white border border-[#DDD8CC] shadow-sm flex items-center gap-2.5">
+                      Carousel &middot; JPG / PNG / WEBP
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
+          </div>
 
-            <!-- STEP 2: POST DETAILS & TELEMETRY -->
-            <div class="space-y-6 pt-6 border-t border-slate-800/80">
-              <div class="flex items-center gap-3">
-                <div class="w-8 h-8 rounded-xl bg-purple-600/20 border border-purple-500/50 flex items-center justify-center text-purple-400 font-mono font-bold text-sm">2</div>
-                <h2 class="text-lg sm:text-xl font-bold font-display text-white tracking-tight">Post Details & Telemetry</h2>
+          <!-- ─── SLAB 02: TELEMETRY & METRICS MATRIX (DAYLIGHT ARCHITECTURAL PURE IVORY) ─── -->
+          <div 
+            class="interactive-hover w-full rounded-[2.5rem] bg-[#FAFAF6]/95 backdrop-blur-xl text-[#141518] p-8 sm:p-14 lg:p-20 transition-all duration-500 overflow-hidden shadow-[0_35px_95px_rgba(20,21,24,0.09)] hover:shadow-[0_40px_110px_rgba(20,21,24,0.13)] border border-[#E3E0D6] relative card-ui"
+          >
+            <!-- Top Specular Hairline -->
+            <div class="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-[#E50914]/80 to-transparent opacity-80"></div>
+
+            <!-- Interior Decorative Coordinates -->
+            <div class="absolute top-6 right-6 font-mono text-[11px] font-bold text-[#9DA1AE] border border-[#DBD6CA] px-3 py-1 rounded-md hidden sm:block uppercase tracking-widest">
+              MATRIX_ID: T-MX_2026
+            </div>
+
+            <div class="relative z-10 space-y-10">
+              <!-- Node Header -->
+              <div class="flex items-center gap-4 border-b border-[#E3DEDB] pb-6">
+                <span class="text-5xl sm:text-6xl font-durer font-extrabold text-[#E50914] tracking-normal select-none">02</span>
+                <span class="h-8 w-[2px] bg-[#DBD5C8]"></span>
+                <span class="card-ui text-sm sm:text-base font-extrabold tracking-[0.08em] uppercase text-[#141518]">Telemetry Node // Empirical Performance Matrix</span>
               </div>
 
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <!-- Content Type -->
-                <div class="space-y-2">
-                  <label class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Content Type</label>
-                  <div class="grid grid-cols-3 gap-1.5 bg-slate-950 p-1 rounded-2xl border border-slate-800">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                <!-- Content Format Toggle Architecture -->
+                <div class="space-y-3">
+                  <label class="card-ui text-sm sm:text-base font-bold uppercase tracking-wide text-[#2A2D35] block">Content Format Architecture</label>
+                  <div class="grid grid-cols-3 gap-2 bg-[#EBE7DF] p-2 rounded-2xl border border-[#D8D3C7] shadow-inner">
                     <button 
                       v-for="type in ['Reel', 'Carousel', 'Static Post']" :key="type"
                       @click="contentType = type"
                       type="button"
-                      :class="contentType === type ? 'bg-indigo-600 text-white font-bold shadow-[0_0_12px_rgba(99,102,241,0.5)]' : 'text-slate-400 hover:text-slate-200'"
-                      class="py-2 text-xs rounded-xl transition-all duration-200"
+                      :class="contentType === type ? 'bg-[#E50914] text-white font-extrabold shadow-[0_5px_15px_rgba(229,9,20,0.35)] border border-[#C40711]' : 'text-[#5C606E] hover:text-[#141518] font-semibold hover:bg-white/60'"
+                      class="py-4 text-sm sm:text-base rounded-xl transition-all duration-300 card-ui uppercase tracking-wide"
                     >
                       {{ type }}
                     </button>
                   </div>
                 </div>
 
-                <!-- Target Platform -->
-                <div class="space-y-2">
-                  <label class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Target Platform</label>
-                  <div class="grid grid-cols-2 gap-1.5 bg-slate-950 p-1 rounded-2xl border border-slate-800">
+                <!-- Target Distribution Channel -->
+                <div class="space-y-3">
+                  <label class="card-ui text-sm sm:text-base font-bold uppercase tracking-wide text-[#2A2D35] block">Target Distribution Channel</label>
+                  <div class="grid grid-cols-2 gap-2 bg-[#EBE7DF] p-2 rounded-2xl border border-[#D8D3C7] shadow-inner">
                     <button 
                       v-for="plat in ['Instagram', 'LinkedIn']" :key="plat"
                       @click="platform = plat"
                       type="button"
-                      :class="platform === plat ? 'bg-purple-600 text-white font-bold shadow-[0_0_12px_rgba(168,85,247,0.5)]' : 'text-slate-400 hover:text-slate-200'"
-                      class="py-2 text-xs rounded-xl transition-all duration-200"
+                      :class="platform === plat ? 'bg-[#E50914] text-white font-extrabold shadow-[0_5px_15px_rgba(229,9,20,0.35)] border border-[#C40711]' : 'text-[#5C606E] hover:text-[#141518] font-semibold hover:bg-white/60'"
+                      class="py-4 text-sm sm:text-base rounded-xl transition-all duration-300 card-ui uppercase tracking-wide"
                     >
                       {{ plat }}
                     </button>
@@ -412,330 +733,423 @@ onMounted(() => {
                 </div>
               </div>
 
-              <!-- Performance Numbers -->
-              <div class="space-y-4">
-                <label class="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center justify-between">
-                  <span>Performance Analytics (Optional except Views)</span>
-                  <span class="text-[10px] font-mono text-slate-500">Numerical Data Only</span>
-                </label>
+              <!-- Numeric Performance Inputs -->
+              <div class="space-y-5 pt-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-l-4 border-[#E50914] pl-4">
+                  <span class="card-ui text-sm sm:text-base font-extrabold uppercase tracking-wide text-[#141518]">Performance Analytics (Optional except Views)</span>
+                  <span class="text-xs sm:text-sm card-ui font-extrabold text-[#0A7B8E] tracking-wider uppercase">Numeric Telemetry Stream</span>
+                </div>
 
-                <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-5">
                   <div>
-                    <span class="block text-[11px] font-medium text-slate-400 mb-1">Views / Reach *</span>
-                    <input v-model="form.views" type="number" placeholder="e.g. 14500" class="w-full px-3.5 py-2.5 rounded-xl bg-[#070a14] border border-slate-800 text-sm font-mono text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all" />
+                    <span class="block card-ui text-sm sm:text-base font-bold text-[#2A2D35] uppercase tracking-wide mb-2">Views / Reach *</span>
+                    <input v-model="form.views" type="number" placeholder="e.g. 14500" class="w-full px-5 py-4 rounded-2xl bg-[#FFFFFF] border border-[#D8D3C6] card-ui text-base sm:text-lg font-semibold text-[#141518] placeholder-[#9498A4] focus:outline-none focus:border-[#E50914] focus:ring-2 focus:ring-[#E50914]/20 transition-all shadow-sm" />
                   </div>
 
-                  <div v-if="contentType === 'Reel'" class="animate-fadeIn">
-                    <span class="block text-[11px] font-medium text-slate-400 mb-1">Watch Time % (Reels)</span>
-                    <input v-model="form.watchTime" type="number" placeholder="e.g. 38%" class="w-full px-3.5 py-2.5 rounded-xl bg-[#070a14] border border-slate-800 text-sm font-mono text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all" />
-                  </div>
-
-                  <div>
-                    <span class="block text-[11px] font-medium text-slate-400 mb-1">Likes</span>
-                    <input v-model="form.likes" type="number" placeholder="e.g. 480" class="w-full px-3.5 py-2.5 rounded-xl bg-[#070a14] border border-slate-800 text-sm font-mono text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all" />
+                  <div v-if="contentType === 'Reel'">
+                    <span class="block card-ui text-sm sm:text-base font-bold text-[#2A2D35] uppercase tracking-wide mb-2">Watch Time %</span>
+                    <input v-model="form.watchTime" type="number" placeholder="e.g. 38" class="w-full px-5 py-4 rounded-2xl bg-[#FFFFFF] border border-[#D8D3C6] card-ui text-base sm:text-lg font-semibold text-[#141518] placeholder-[#9498A4] focus:outline-none focus:border-[#E50914] focus:ring-2 focus:ring-[#E50914]/20 transition-all shadow-sm" />
                   </div>
 
                   <div>
-                    <span class="block text-[11px] font-medium text-slate-400 mb-1">Comments</span>
-                    <input v-model="form.comments" type="number" placeholder="e.g. 24" class="w-full px-3.5 py-2.5 rounded-xl bg-[#070a14] border border-slate-800 text-sm font-mono text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all" />
+                    <span class="block card-ui text-sm sm:text-base font-bold text-[#2A2D35] uppercase tracking-wide mb-2">Likes</span>
+                    <input v-model="form.likes" type="number" placeholder="e.g. 480" class="w-full px-5 py-4 rounded-2xl bg-[#FFFFFF] border border-[#D8D3C6] card-ui text-base sm:text-lg font-semibold text-[#141518] placeholder-[#9498A4] focus:outline-none focus:border-[#E50914] focus:ring-2 focus:ring-[#E50914]/20 transition-all shadow-sm" />
                   </div>
 
                   <div>
-                    <span class="block text-[11px] font-medium text-slate-400 mb-1">Shares</span>
-                    <input v-model="form.shares" type="number" placeholder="e.g. 95" class="w-full px-3.5 py-2.5 rounded-xl bg-[#070a14] border border-slate-800 text-sm font-mono text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all" />
+                    <span class="block card-ui text-sm sm:text-base font-bold text-[#2A2D35] uppercase tracking-wide mb-2">Comments</span>
+                    <input v-model="form.comments" type="number" placeholder="e.g. 24" class="w-full px-5 py-4 rounded-2xl bg-[#FFFFFF] border border-[#D8D3C6] card-ui text-base sm:text-lg font-semibold text-[#141518] placeholder-[#9498A4] focus:outline-none focus:border-[#E50914] focus:ring-2 focus:ring-[#E50914]/20 transition-all shadow-sm" />
                   </div>
 
                   <div>
-                    <span class="block text-[11px] font-medium text-slate-400 mb-1">Saves</span>
-                    <input v-model="form.saves" type="number" placeholder="e.g. 110" class="w-full px-3.5 py-2.5 rounded-xl bg-[#070a14] border border-slate-800 text-sm font-mono text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all" />
+                    <span class="block card-ui text-sm sm:text-base font-bold text-[#2A2D35] uppercase tracking-wide mb-2">Shares</span>
+                    <input v-model="form.shares" type="number" placeholder="e.g. 95" class="w-full px-5 py-4 rounded-2xl bg-[#FFFFFF] border border-[#D8D3C6] card-ui text-base sm:text-lg font-semibold text-[#141518] placeholder-[#9498A4] focus:outline-none focus:border-[#E50914] focus:ring-2 focus:ring-[#E50914]/20 transition-all shadow-sm" />
                   </div>
 
                   <div>
-                    <span class="block text-[11px] font-medium text-slate-400 mb-1">Profile Visits</span>
-                    <input v-model="form.profileVisits" type="number" placeholder="e.g. 310" class="w-full px-3.5 py-2.5 rounded-xl bg-[#070a14] border border-slate-800 text-sm font-mono text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all" />
+                    <span class="block card-ui text-sm sm:text-base font-bold text-[#2A2D35] uppercase tracking-wide mb-2">Saves</span>
+                    <input v-model="form.saves" type="number" placeholder="e.g. 110" class="w-full px-5 py-4 rounded-2xl bg-[#FFFFFF] border border-[#D8D3C6] card-ui text-base sm:text-lg font-semibold text-[#141518] placeholder-[#9498A4] focus:outline-none focus:border-[#E50914] focus:ring-2 focus:ring-[#E50914]/20 transition-all shadow-sm" />
                   </div>
 
                   <div>
-                    <span class="block text-[11px] font-medium text-slate-400 mb-1">Followers Gained</span>
-                    <input v-model="form.followersGained" type="number" placeholder="e.g. 42" class="w-full px-3.5 py-2.5 rounded-xl bg-[#070a14] border border-slate-800 text-sm font-mono text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all" />
+                    <span class="block card-ui text-sm sm:text-base font-bold text-[#2A2D35] uppercase tracking-wide mb-2">Profile Visits</span>
+                    <input v-model="form.profileVisits" type="number" placeholder="e.g. 310" class="w-full px-5 py-4 rounded-2xl bg-[#FFFFFF] border border-[#D8D3C6] card-ui text-base sm:text-lg font-semibold text-[#141518] placeholder-[#9498A4] focus:outline-none focus:border-[#E50914] focus:ring-2 focus:ring-[#E50914]/20 transition-all shadow-sm" />
+                  </div>
+
+                  <div>
+                    <span class="block card-ui text-sm sm:text-base font-bold text-[#2A2D35] uppercase tracking-wide mb-2">Followers Gained</span>
+                    <input v-model="form.followersGained" type="number" placeholder="e.g. 42" class="w-full px-5 py-4 rounded-2xl bg-[#FFFFFF] border border-[#D8D3C6] card-ui text-base sm:text-lg font-semibold text-[#141518] placeholder-[#9498A4] focus:outline-none focus:border-[#E50914] focus:ring-2 focus:ring-[#E50914]/20 transition-all shadow-sm" />
                   </div>
                 </div>
               </div>
-            </div>
 
-            <!-- STEP 3: BRAND CONTEXT -->
-            <div class="space-y-4 pt-6 border-t border-slate-800/80">
-              <div class="flex items-center gap-3">
-                <div class="w-8 h-8 rounded-xl bg-rose-600/20 border border-rose-500/50 flex items-center justify-center text-rose-400 font-mono font-bold text-sm">3</div>
-                <h2 class="text-lg sm:text-xl font-bold font-display text-white tracking-tight">Tell Klarix About Your Brand</h2>
+              <!-- Brand Intelligence Context -->
+              <div class="space-y-4 pt-8 border-t border-[#E3DEDB]">
+                <div class="flex items-center gap-4">
+                  <span class="text-3xl sm:text-4xl font-durer font-extrabold text-[#E50914] tracking-normal select-none">03</span>
+                  <span class="h-6 w-[2px] bg-[#DBD5C8]"></span>
+                  <span class="card-ui text-sm sm:text-base font-extrabold tracking-[0.08em] uppercase text-[#141518]">Brand Intelligence &amp; Audience Context</span>
+                </div>
+                
+                <div>
+                  <textarea 
+                    v-model="form.brandContext"
+                    rows="3"
+                    placeholder="e.g. We engineer high-velocity tooling for founders and executives. Our narrative targets early-stage scaleups seeking institutional authority and market governance."
+                    class="w-full p-6 rounded-2xl bg-[#FFFFFF] border border-[#D8D3C6] card-ui text-base sm:text-lg font-medium text-[#141518] placeholder-[#9498A4] focus:outline-none focus:border-[#E50914] focus:ring-2 focus:ring-[#E50914]/20 transition-all leading-relaxed resize-none shadow-sm"
+                  ></textarea>
+                  <p class="card-ui text-sm sm:text-base font-semibold text-[#4A4E5A] mt-3.5 leading-relaxed flex items-center gap-2.5">
+                    <span class="text-[#0A7B8E] font-black text-lg">ℹ</span> Provides high-context semantic framing to calibrate our neural prescriptions instead of generic recommendations.
+                  </p>
+                </div>
               </div>
-              
-              <div>
-                <textarea 
-                  v-model="form.brandContext"
-                  rows="3"
-                  placeholder="e.g. I'm a Data Science student building an AI tool for founders. My audience is early-stage entrepreneurs and personal brands looking to scale."
-                  class="w-full p-4 rounded-2xl bg-[#070a14] border border-slate-800 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all leading-relaxed resize-none"
-                ></textarea>
-                <p class="text-[11px] text-slate-500 mt-1.5 italic">This helps Klarix give you tailored strategic guidance instead of generic tips.</p>
+
+              <!-- MONOLITHIC SUBMIT ACTION -->
+              <div class="pt-6">
+                <button
+                  @click="runAnalysis"
+                  :disabled="currentState === STATES.LOADING"
+                  type="button"
+                  :class="currentState === STATES.LOADING ? 'bg-[#DCD8CD] text-black/40 border border-[#CECAC0] cursor-not-allowed shadow-none' : 'bg-[#E50914] text-white hover:bg-[#141518] hover:text-white border border-[#C40711] shadow-[0_20px_50px_rgba(229,9,20,0.35)] hover:shadow-[0_25px_60px_rgba(20,21,24,0.25)] hover:scale-[1.01] active:scale-[0.99]'"
+                  class="w-full py-6 px-10 rounded-2xl card-ui font-black text-lg sm:text-2xl uppercase tracking-[0.12em] transition-all duration-300 flex items-center justify-center gap-4 group"
+                >
+                  <span v-if="currentState === STATES.LOADING" class="w-6 h-6 border-3 border-[#141518] border-t-transparent rounded-full animate-spin"></span>
+                  <span class="flex items-center gap-3">
+                    <span>{{ currentState === STATES.LOADING ? 'NEURAL COMPUTE IN PROGRESS...' : 'EXECUTE 3-NODE DIAGNOSIS' }}</span>
+                    <span v-if="currentState !== STATES.LOADING" class="inline-block transition-transform duration-300 group-hover:translate-x-2 font-black text-3xl">→</span>
+                  </span>
+                </button>
+                
+                <div class="flex items-center justify-center gap-3 card-ui text-sm sm:text-base text-[#3E424D] font-bold tracking-wide uppercase mt-5">
+                  <span>Telemetry securely verified and analyzed in real-time by Klarix neural clusters</span>
+                </div>
               </div>
-            </div>
 
-            <!-- SUBMIT BUTTON & LOADING STATE -->
-            <div class="pt-4">
-              <button
-                @click="runAnalysis"
-                :disabled="currentState === STATES.LOADING"
-                type="button"
-                :class="currentState === STATES.LOADING ? 'bg-slate-800 text-slate-400 border border-slate-700 cursor-not-allowed shadow-none' : 'bg-gradient-to-r from-indigo-500 via-purple-500 to-rose-500 text-white shadow-[0_0_35px_rgba(99,102,241,0.5)] hover:shadow-[0_0_50px_rgba(168,85,247,0.7)] hover:scale-[1.01] active:scale-[0.99]'"
-                class="w-full py-4 px-8 rounded-2xl font-display font-extrabold text-base uppercase tracking-wider transition-all duration-300 flex items-center justify-center gap-3"
-              >
-                <span v-if="currentState === STATES.LOADING" class="w-5 h-5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></span>
-                <span>{{ currentState === STATES.LOADING ? 'Analysing...' : 'Analyse My Content →' }}</span>
-              </button>
-              
-              <p class="text-center text-xs text-slate-500 mt-3">
-                By clicking, you agree to our terms. Your content is processed securely on the Klarix backend API.
-              </p>
             </div>
-
           </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── C. LIVE DIAGNOSTIC OUTPUT DECK WITH DAYLIGHT GLASS ARCHIVE & SECOND AMBIENT CGI VIDEO ─── -->
+    <section class="relative w-full py-28 sm:py-40 bg-[#EAE6DD] px-6 sm:px-12 overflow-hidden border-t border-[#DCD6C8]">
+      
+      <!-- Second Ambient Background Video Element (bg-ambient-4.mp4) trimmed & denoised for clean daylight presentation -->
+      <div class="absolute inset-0 z-0 pointer-events-none flex items-center justify-center overflow-hidden">
+        <video
+          autoplay
+          muted
+          loop
+          playsinline
+          class="w-full h-full object-cover opacity-100 filter contrast-[1.15] brightness-[1.03] saturate-[1.2]"
+        >
+          <source src="/videos/bg-ambient-4.mp4" type="video/mp4" />
+        </video>
+        <!-- Gentle top & bottom integration gradients without obscuring center video -->
+        <div class="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-[#F4F1EC] via-[#F4F1EC]/60 to-transparent"></div>
+        <div class="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#F4F1EC] via-[#F4F1EC]/60 to-transparent"></div>
+      </div>
+
+      <div class="max-w-[92rem] mx-auto relative z-10">
+        <!-- Editorial Section Header -->
+        <div class="mb-20 text-center max-w-4xl mx-auto space-y-6">
+          <span class="inline-flex items-center gap-2.5 font-display text-xs font-black uppercase tracking-[0.25em] text-[#E50914] bg-white/90 backdrop-blur-md px-5 py-2 rounded-full border border-[#DED9CC] shadow-sm">
+            <span>•</span>
+            <span>Algorithmic Prescriptions // Realtime Output</span>
+            <span>•</span>
+          </span>
+          <h2 class="durer-heading text-[7vw] sm:text-[4.8rem] lg:text-[6rem] font-bold text-[#141518] uppercase tracking-[0.01em] leading-none">
+            Diagnostic <span class="text-[#E50914] font-display font-black tracking-normal">Verdict.</span>
+          </h2>
+          <p class="font-display text-base sm:text-lg text-[#555966] font-bold max-w-2xl mx-auto leading-relaxed">
+            Neural synthesis of visual metrics, narrative pacing, and strategic performance. Structured interventions designed for immediate audience retention and growth.
+          </p>
         </div>
 
-        <!-- ================= RIGHT COLUMN: LIVE AI OUTPUT DECK ================= -->
-        <div 
-          class="lg:col-span-6 transition-all duration-[1000ms] delay-200 ease-[cubic-bezier(0.16,1,0.3,1)]"
-          :class="isLoaded ? 'translate-x-0 opacity-100' : 'translate-x-32 opacity-0'"
-        >
-          <!-- 1. IDLE STATE: EMPTY -->
-          <div v-if="currentState === STATES.IDLE"></div>
+        <div class="relative min-h-[600px] w-full flex flex-col justify-center">
 
-          <!-- 2. LOADING STATE: SHOW REAL-TIME AGENT STEPS ONLY -->
-          <div v-if="currentState === STATES.LOADING && !diagnosis" class="p-8 sm:p-12 rounded-[2.5rem] bg-[#0b0f1b]/90 backdrop-blur-2xl border border-indigo-500/30 shadow-[0_20px_60px_rgba(0,0,0,0.5)] space-y-8 animate-fadeIn">
-            <div class="text-center space-y-4">
-              <div class="w-16 h-16 rounded-3xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center mx-auto shadow-[0_0_30px_rgba(99,102,241,0.4)] animate-pulse">
-                <span class="w-8 h-8 border-3 border-indigo-400 border-t-transparent rounded-full animate-spin"></span>
-              </div>
-              <h3 class="text-xl font-bold font-display text-white">Executing 3-Agent AI Pipeline</h3>
-              <p class="text-sm font-mono text-indigo-400 animate-pulse">{{ loadingStepText }}</p>
+          <!-- 1. IDLE STATE (STANDBY DECK) -->
+          <div v-if="currentState === STATES.IDLE" class="p-12 sm:p-20 rounded-[3rem] bg-[#FAFAF7]/95 backdrop-blur-2xl border border-[#E5E0D6] shadow-[0_25px_80px_rgba(20,21,24,0.08)] text-center max-w-4xl mx-auto space-y-8 card-ui">
+            <div class="w-20 h-20 rounded-3xl bg-[#E50914]/10 border border-[#E50914]/40 text-[#E50914] flex items-center justify-center mx-auto shadow-inner">
+              <span class="font-display text-3xl font-black">⚡</span>
+            </div>
+            <h3 class="durer-heading text-3xl sm:text-5xl font-extrabold uppercase tracking-[0.02em] text-[#141518]">Neural Processing Nodes on Standby</h3>
+            <p class="card-ui text-lg sm:text-xl font-medium text-[#3E424D] max-w-2xl mx-auto leading-relaxed">
+              Our 3-node intelligence architecture is calibrated and awaiting your command. Ingest media elements above and execute diagnosis to activate high-precision computational pipelines.
+            </p>
+          </div>
+
+          <!-- 2. LOADING STATE (NEURAL PIPELINE ACTIVE) -->
+          <div v-if="currentState === STATES.LOADING" class="p-12 sm:p-20 rounded-[3rem] bg-[#141518]/95 backdrop-blur-2xl border border-[#333745] shadow-[0_30px_90px_rgba(20,21,24,0.25)] text-[#FAFAF7] text-center max-w-4xl mx-auto space-y-10 card-ui">
+            <div class="space-y-4">
+              <div class="w-16 h-16 border-4 border-[#E50914] border-t-transparent rounded-full animate-spin mx-auto"></div>
+              <h3 class="font-durer text-3xl sm:text-4xl font-extrabold uppercase tracking-wide">Executing 3-Node Assessment</h3>
+              <p class="card-ui text-base sm:text-xl font-bold text-[#00E5FF] tracking-wider uppercase animate-pulse">{{ loadingStepText }}</p>
             </div>
 
-            <div class="space-y-4 max-w-sm mx-auto pt-2">
-              <div class="flex items-center gap-3.5 p-3.5 rounded-2xl bg-slate-900/80 border transition-all" :class="activeAgentStep >= 1 ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-slate-800 opacity-40'">
-                <span class="w-2.5 h-2.5 rounded-full" :class="activeAgentStep > 1 ? 'bg-emerald-400' : (activeAgentStep === 1 ? 'bg-indigo-400 animate-ping' : 'bg-slate-600')"></span>
-                <span class="text-xs font-semibold" :class="activeAgentStep >= 1 ? 'text-slate-200' : 'text-slate-500'">Agent 1: Performance Analyst</span>
+            <div class="space-y-4 max-w-lg mx-auto">
+              <div class="flex items-center gap-4 p-5 rounded-2xl border transition-all duration-500 shadow-sm card-ui" :class="activeAgentStep >= 1 ? 'border-[#00E5FF]/60 bg-[#00E5FF]/15 text-white font-extrabold shadow-[0_0_25px_rgba(0,229,255,0.3)]' : 'border-white/10 text-white/40 bg-[#121522]'">
+                <span class="w-4 h-4 rounded-full shrink-0 shadow-sm" :class="activeAgentStep > 1 ? 'bg-white shadow-[0_0_10px_#ffffff]' : (activeAgentStep === 1 ? 'bg-[#00E5FF] animate-ping shadow-[0_0_10px_#00E5FF]' : 'bg-white/20')"></span>
+                <span class="card-ui text-sm sm:text-base uppercase font-extrabold tracking-wide">Node 01 // Visual &amp; Spatial Analyst</span>
               </div>
-              <div class="flex items-center gap-3.5 p-3.5 rounded-2xl bg-slate-900/80 border transition-all" :class="activeAgentStep >= 2 ? 'border-blue-500/40 bg-blue-500/5' : 'border-slate-800 opacity-40'">
-                <span class="w-2.5 h-2.5 rounded-full" :class="activeAgentStep > 2 ? 'bg-blue-400' : (activeAgentStep === 2 ? 'bg-blue-400 animate-ping' : 'bg-slate-600')"></span>
-                <span class="text-xs font-semibold" :class="activeAgentStep >= 2 ? 'text-slate-200' : 'text-slate-500'">Agent 2: Strategist & Trend Intelligence</span>
+              <div class="flex items-center gap-4 p-5 rounded-2xl border transition-all duration-500 shadow-sm card-ui" :class="activeAgentStep >= 2 ? 'border-[#00E5FF]/60 bg-[#00E5FF]/15 text-white font-extrabold shadow-[0_0_25px_rgba(0,229,255,0.3)]' : 'border-white/10 text-white/40 bg-[#121522]'">
+                <span class="w-4 h-4 rounded-full shrink-0 shadow-sm" :class="activeAgentStep > 2 ? 'bg-white shadow-[0_0_10px_#ffffff]' : (activeAgentStep === 2 ? 'bg-[#00E5FF] animate-ping shadow-[0_0_10px_#00E5FF]' : 'bg-white/20')"></span>
+                <span class="card-ui text-sm sm:text-base uppercase font-extrabold tracking-wide">Node 02 // Retention &amp; Trend Strategy</span>
               </div>
-              <div class="flex items-center gap-3.5 p-3.5 rounded-2xl bg-slate-900/80 border transition-all" :class="activeAgentStep >= 3 ? 'border-purple-500/40 bg-purple-500/5' : 'border-slate-800 opacity-40'">
-                <span class="w-2.5 h-2.5 rounded-full" :class="activeAgentStep === 3 ? 'bg-purple-400 animate-ping' : 'bg-slate-600'"></span>
-                <span class="text-xs font-semibold" :class="activeAgentStep >= 3 ? 'text-slate-200' : 'text-slate-500'">Agent 3: Viral Scriptwriter</span>
+              <div class="flex items-center gap-4 p-5 rounded-2xl border transition-all duration-500 shadow-sm card-ui" :class="activeAgentStep >= 3 ? 'border-[#00E5FF]/60 bg-[#00E5FF]/15 text-white font-extrabold shadow-[0_0_25px_rgba(0,229,255,0.3)]' : 'border-white/10 text-white/40 bg-[#121522]'">
+                <span class="w-4 h-4 rounded-full shrink-0 shadow-sm" :class="activeAgentStep === 3 ? 'bg-[#00E5FF] animate-ping shadow-[0_0_10px_#00E5FF]' : 'bg-white/20'"></span>
+                <span class="card-ui text-sm sm:text-base uppercase font-extrabold tracking-wide">Node 03 // Viral Script Synthesis</span>
               </div>
             </div>
           </div>
 
           <!-- 3. ERROR STATE -->
-          <div v-if="currentState === STATES.ERROR" class="p-8 sm:p-10 rounded-[2.5rem] bg-rose-950/20 backdrop-blur-2xl border border-rose-500/40 shadow-[0_20px_60px_rgba(244,63,94,0.15)] text-center space-y-6 animate-fadeIn">
-            <div class="w-16 h-16 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-400 flex items-center justify-center mx-auto shadow-[0_0_20px_rgba(244,63,94,0.3)]">
-              <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-              </svg>
+          <div v-if="currentState === STATES.ERROR" class="p-10 sm:p-16 rounded-[2.5rem] bg-[#141518]/95 backdrop-blur-2xl border-l-8 border-[#E50914] border border-[#333745] shadow-[0_30px_90px_rgba(229,9,20,0.4)] text-white text-center space-y-7 card-ui">
+            <div class="w-20 h-20 rounded-3xl bg-[#E50914]/25 border border-[#E50914] text-[#E50914] flex items-center justify-center mx-auto shadow-[0_0_40px_rgba(229,9,20,0.4)]">
+              <span class="font-durer text-4xl font-black">!</span>
             </div>
-            <h3 class="text-xl font-bold font-display text-white">Execution Failed or Missing Input</h3>
-            <p class="text-sm font-mono text-rose-300 max-w-md mx-auto">{{ errorMessage }}</p>
+            <h3 class="font-durer text-3xl sm:text-5xl font-extrabold uppercase tracking-wide">Execution Exception</h3>
+            <p class="card-ui text-lg sm:text-xl font-medium text-white/90 max-w-2xl mx-auto leading-relaxed">{{ errorMessage }}</p>
             
-            <div class="pt-2">
+            <div class="pt-4">
               <button 
                 @click="runAnalysis" 
                 type="button"
-                class="px-8 py-3.5 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white font-bold uppercase tracking-wider text-xs transition-all shadow-[0_0_20px_rgba(244,63,94,0.4)]"
+                class="px-12 py-5 rounded-2xl bg-[#E50914] hover:bg-white hover:text-[#111111] border border-white/20 text-white card-ui font-extrabold uppercase tracking-widest text-sm sm:text-base transition-all shadow-[0_20px_50px_rgba(229,9,20,0.5)] hover:scale-105"
               >
-                Try Again
+                Re-Execute Diagnostics →
               </button>
             </div>
           </div>
 
-          <!-- 4 & 5. PARTIAL / COMPLETE STATES -->
-          <div v-if="(currentState === STATES.PARTIAL || currentState === STATES.COMPLETE || diagnosis) && currentState !== STATES.ERROR" class="space-y-6 animate-fadeIn">
+          <!-- 4 & 5. PARTIAL / COMPLETE STATES (EXECUTIVE RESULTS DECK) -->
+          <div v-if="(currentState === STATES.PARTIAL || currentState === STATES.COMPLETE || diagnosis) && currentState !== STATES.ERROR" class="space-y-12 card-ui">
             
             <!-- CARD 1: EXTRACTED TRANSCRIPT -->
-            <div v-if="uploadedFiles.some(f => f.category === 'video') && diagnosis" class="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition-all duration-300 space-y-4">
+            <div v-if="uploadedFiles.some(f => f.category === 'video') && diagnosis" class="p-8 sm:p-12 rounded-3xl bg-[#141518]/95 backdrop-blur-2xl text-white border border-[#333745] shadow-[0_25px_80px_rgba(0,0,0,0.25)] space-y-6">
               <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2 text-xs font-bold text-slate-300 uppercase tracking-wider">
-                  <span>💬 Extracted Transcript</span>
-                  <span class="text-[10px] text-slate-500 font-mono px-2 py-0.5 rounded bg-slate-800">Audio / Video</span>
+                <div class="flex items-center gap-3 card-ui text-sm sm:text-base font-bold uppercase tracking-wider text-[#00E5FF]">
+                  <span class="w-3 h-3 rounded-full bg-[#00E5FF] shadow-[0_0_10px_#00E5FF]"></span>
+                  <span>EXTRACTED AUDIO SPEECH TRANSCRIPT</span>
+                  <span class="text-xs text-white/90 px-3.5 py-1.5 rounded-lg bg-white/10 uppercase border border-white/15 font-extrabold">Audio Node</span>
                 </div>
-                <button @click="isTranscriptOpen = !isTranscriptOpen" type="button" class="text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors">
-                  {{ isTranscriptOpen ? 'Hide transcript ▲' : 'Show transcript ▼' }}
+                <button @click="isTranscriptOpen = !isTranscriptOpen" type="button" class="card-ui text-xs sm:text-sm font-extrabold uppercase tracking-wider text-white/80 hover:text-[#00E5FF] px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-[#00E5FF] transition-all">
+                  {{ isTranscriptOpen ? 'Hide Transcript ▲' : 'Show Transcript ▼' }}
                 </button>
               </div>
 
-              <div v-if="isTranscriptOpen" class="p-4 rounded-2xl bg-[#070a14] border border-slate-800/80 font-mono text-xs text-slate-400 leading-relaxed whitespace-pre-wrap animate-fadeIn">
-                {{ diagnosis.extracted_transcript || diagnosis.transcript_quality || 'No speech detected or silent video stream.' }}
+              <div v-if="isTranscriptOpen" class="p-7 rounded-2xl bg-[#1A1E2E] border border-white/15 card-ui text-base sm:text-lg font-medium text-white/90 leading-relaxed whitespace-pre-wrap shadow-inner">
+                {{ diagnosis.extracted_transcript || diagnosis.transcript_quality || 'No spoken dialogue detected in media file.' }}
               </div>
             </div>
 
             <!-- CARD 2: WHAT WORKED ✓ -->
-            <div v-if="diagnosis" class="p-7 rounded-[2.5rem] bg-emerald-950/20 backdrop-blur-xl border border-emerald-500/30 hover:border-emerald-500/50 hover:shadow-[0_0_35px_rgba(34,197,94,0.25)] transition-all duration-300 space-y-5 animate-fadeIn">
-              <div class="flex items-center justify-between">
-                <h3 class="text-lg font-bold font-display text-emerald-400 flex items-center gap-2">
-                  <span class="w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-xs">✓</span>
-                  <span>What Worked</span>
+            <div v-if="diagnosis" class="p-8 sm:p-14 rounded-[2.5rem] bg-[#141518]/95 backdrop-blur-2xl text-white border-t-4 border-t-[#00E5FF] border border-[#333745] shadow-[0_35px_100px_rgba(0,0,0,0.3)] space-y-8 relative overflow-hidden">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-white/15 pb-6 gap-4">
+                <h3 class="font-durer text-3xl sm:text-4xl font-black uppercase tracking-[0.02em] text-white flex items-center gap-4">
+                  <span class="w-11 h-11 rounded-2xl bg-[#00E5FF]/20 text-[#00E5FF] border border-[#00E5FF]/50 flex items-center justify-center card-ui font-black text-xl shadow-[0_0_20px_rgba(0,229,255,0.4)]">✓</span>
+                  <span>Validated Mechanics</span>
                 </h3>
-                <button @click="copyText(copyWhatWorked, 'worked')" type="button" class="px-3.5 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition-all">
-                  {{ copiedId === 'worked' ? '✓ Copied' : 'Copy' }}
+                <button @click="copyText(copyWhatWorked, 'worked')" type="button" class="px-7 py-3.5 rounded-xl bg-white/15 hover:bg-[#00E5FF] hover:text-black border border-white/20 text-white card-ui text-xs sm:text-sm font-extrabold uppercase tracking-wider transition-all shadow-md self-start sm:self-auto">
+                  {{ copiedId === 'worked' ? 'COPIED TO CLIPBOARD ✓' : 'COPY VALIDATIONS' }}
                 </button>
               </div>
-              <ul class="space-y-3 text-sm text-slate-300 leading-relaxed">
-                <li v-for="(item, idx) in (diagnosis.what_worked || [])" :key="idx" class="flex items-start gap-3">
-                  <span class="text-emerald-400 font-bold text-base leading-none mt-0.5">•</span>
+              <ul class="space-y-4 card-ui text-base sm:text-lg text-white/95 font-medium leading-relaxed">
+                <li v-for="(item, idx) in (diagnosis.what_worked || [])" :key="idx" class="flex items-start gap-4 p-5 rounded-2xl bg-[#1A1E2E]/80 border border-white/10 hover:border-[#00E5FF]/50 transition-all">
+                  <span class="text-[#00E5FF] font-black text-2xl leading-none mt-0.5 shrink-0">•</span>
                   <span>{{ item }}</span>
                 </li>
               </ul>
             </div>
 
             <!-- CARD 3: WHAT FAILED ✗ -->
-            <div v-if="diagnosis" class="p-7 rounded-[2.5rem] bg-rose-950/20 backdrop-blur-xl border border-rose-500/30 hover:border-rose-500/50 hover:shadow-[0_0_35px_rgba(239,68,68,0.25)] transition-all duration-300 space-y-5 animate-fadeIn">
-              <div class="flex items-center justify-between">
-                <h3 class="text-lg font-bold font-display text-rose-400 flex items-center gap-2">
-                  <span class="w-6 h-6 rounded-full bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-xs">✗</span>
-                  <span>What Failed (Drop-Off Telemetry)</span>
+            <div v-if="diagnosis" class="p-8 sm:p-14 rounded-[2.5rem] bg-[#141518]/95 backdrop-blur-2xl text-white border-t-4 border-t-[#E50914] border border-[#333745] shadow-[0_35px_100px_rgba(229,9,20,0.25)] space-y-8 relative overflow-hidden">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-white/15 pb-6 gap-4">
+                <h3 class="font-durer text-3xl sm:text-4xl font-black uppercase tracking-[0.02em] text-white flex items-center gap-4">
+                  <span class="w-11 h-11 rounded-2xl bg-[#E50914]/30 text-[#E50914] border border-[#E50914]/60 flex items-center justify-center card-ui font-black text-xl shadow-[0_0_20px_rgba(229,9,20,0.5)]">✗</span>
+                  <span>Retention Fractures</span>
                 </h3>
-                <button @click="copyText(copyWhatFailed, 'failed')" type="button" class="px-3.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-bold transition-all">
-                  {{ copiedId === 'failed' ? '✓ Copied' : 'Copy' }}
+                <button @click="copyText(copyWhatFailed, 'failed')" type="button" class="px-7 py-3.5 rounded-xl bg-white/15 hover:bg-[#E50914] border border-white/20 text-white card-ui text-xs sm:text-sm font-extrabold uppercase tracking-wider transition-all shadow-md self-start sm:self-auto">
+                  {{ copiedId === 'failed' ? 'COPIED TO CLIPBOARD ✓' : 'COPY FRACTURES' }}
                 </button>
               </div>
               
-              <ul class="space-y-3 text-sm text-slate-300 leading-relaxed">
-                <li v-for="(item, idx) in (diagnosis.what_failed || [])" :key="idx" class="flex items-start gap-3">
-                  <span class="text-rose-400 font-bold text-base leading-none mt-0.5">•</span>
+              <ul class="space-y-4 card-ui text-base sm:text-lg text-white/95 font-medium leading-relaxed">
+                <li v-for="(item, idx) in (diagnosis.what_failed || [])" :key="idx" class="flex items-start gap-4 p-5 rounded-2xl bg-[#1A1E2E]/80 border border-white/10 hover:border-[#E50914]/60 transition-all">
+                  <span class="text-[#E50914] font-black text-2xl leading-none mt-0.5 shrink-0">•</span>
                   <span>{{ item }}</span>
                 </li>
-                <li v-if="diagnosis.retention_drop_point && diagnosis.retention_drop_reason" class="flex items-start gap-3 text-rose-300">
-                  <span class="text-rose-400 font-bold text-base leading-none mt-0.5">•</span>
-                  <span><strong>Drop-Off Point ({{ diagnosis.retention_drop_point }}):</strong> {{ diagnosis.retention_drop_reason }}</span>
+                <li v-if="diagnosis.retention_drop_point && diagnosis.retention_drop_reason" class="flex items-start gap-4 text-white bg-[#E50914]/25 p-6 rounded-2xl border border-[#E50914]/60 shadow-[0_10px_30px_rgba(229,9,20,0.3)]">
+                  <span class="text-[#E50914] font-black text-2xl leading-none mt-0.5 shrink-0">▼</span>
+                  <span><strong class="text-[#FF3A4A] uppercase font-black tracking-wider block text-xs sm:text-sm mb-1">Critical Drop-Off Threshold // {{ diagnosis.retention_drop_point }}</strong> {{ diagnosis.retention_drop_reason }}</span>
                 </li>
               </ul>
 
-              <div v-if="diagnosis.overall_diagnosis" class="pt-4 border-t border-rose-500/20 text-xs text-rose-200/90 leading-relaxed bg-rose-950/30 p-4 rounded-2xl border border-rose-500/30">
-                <span class="font-bold uppercase text-[10px] tracking-wider block mb-1 text-rose-400">Overall AI Diagnosis:</span>
+              <div v-if="diagnosis.overall_diagnosis" class="pt-6 border-t border-white/15 card-ui text-base sm:text-lg font-medium text-white leading-relaxed bg-[#1A1E2E] p-7 rounded-3xl border border-white/15 shadow-inner">
+                <span class="font-bold uppercase text-xs sm:text-sm tracking-widest block mb-3 text-[#E50914] flex items-center gap-2.5">
+                  <span class="w-2.5 h-2.5 rounded-full bg-[#E50914]"></span>
+                  <span>AI Neural Diagnostic Verdict:</span>
+                </span>
                 {{ diagnosis.overall_diagnosis }}
               </div>
             </div>
 
-            <!-- CARD 4: YOUR NEXT POST STRATEGY → -->
-            <div v-if="strategy" class="p-7 rounded-[2.5rem] bg-blue-950/20 backdrop-blur-xl border border-blue-500/30 hover:border-blue-500/50 hover:shadow-[0_0_35px_rgba(59,130,246,0.25)] transition-all duration-300 space-y-5 animate-fadeIn">
-              <div class="flex items-center justify-between">
-                <h3 class="text-lg font-bold font-display text-blue-400 flex items-center gap-2">
-                  <span class="text-xl">→</span>
-                  <span>Your Next Post Strategy</span>
+            <!-- CARD 4: STRATEGIC ROADMAP → -->
+            <div v-if="strategy" class="p-8 sm:p-14 rounded-[2.5rem] bg-[#141518]/95 backdrop-blur-2xl text-white border border-[#333745] shadow-[0_35px_100px_rgba(0,0,0,0.3)] space-y-8 relative overflow-hidden">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-white/15 pb-6 gap-4">
+                <h3 class="font-durer text-3xl sm:text-4xl font-black uppercase tracking-[0.02em] text-white flex items-center gap-4">
+                  <span class="text-[#E50914] text-4xl leading-none">→</span>
+                  <span>Strategic Roadmap</span>
                 </h3>
-                <button @click="copyText(copyStrategy, 'strategy')" type="button" class="px-3.5 py-1.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/30 text-xs font-bold transition-all">
-                  {{ copiedId === 'strategy' ? '✓ Copied' : 'Copy' }}
+                <button @click="copyText(copyStrategy, 'strategy')" type="button" class="px-7 py-3.5 rounded-xl bg-white/15 hover:bg-[#E50914] border border-white/20 text-white card-ui text-xs sm:text-sm font-extrabold uppercase tracking-wider transition-all shadow-md self-start sm:self-auto">
+                  {{ copiedId === 'strategy' ? 'COPIED ROADMAP ✓' : 'COPY ROADMAP' }}
                 </button>
               </div>
 
-              <div class="space-y-3 text-sm text-slate-300 divide-y divide-blue-500/10">
-                <div v-if="strategy.priority_fix" class="pt-2 flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
-                  <span class="text-xs font-mono uppercase font-bold text-blue-400 sm:w-1/3 shrink-0">Priority Fix</span>
-                  <span class="text-sm text-slate-200 font-medium sm:w-2/3">{{ strategy.priority_fix }}</span>
+              <div class="space-y-5 card-ui text-base sm:text-lg text-white font-medium divide-y divide-white/10">
+                <div v-if="strategy.priority_fix" class="pt-4 flex flex-col sm:flex-row sm:items-baseline justify-between gap-3">
+                  <span class="text-xs sm:text-sm uppercase font-black tracking-wider text-[#E50914] sm:w-1/3 shrink-0">Priority Fix</span>
+                  <span class="text-white text-base sm:text-lg sm:w-2/3">{{ strategy.priority_fix }}</span>
                 </div>
-                <div v-if="strategy.next_content_type" class="pt-2 flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
-                  <span class="text-xs font-mono uppercase font-bold text-blue-400 sm:w-1/3 shrink-0">Content Type</span>
-                  <span class="text-sm text-slate-200 sm:w-2/3">{{ strategy.next_content_type }} &middot; {{ strategy.next_content_angle }}</span>
+                <div v-if="strategy.next_content_type" class="pt-4 flex flex-col sm:flex-row sm:items-baseline justify-between gap-3">
+                  <span class="text-xs sm:text-sm uppercase font-black tracking-wider text-white/75 sm:w-1/3 shrink-0">Format &amp; Angle</span>
+                  <span class="text-white text-base sm:text-lg sm:w-2/3 bg-white/10 px-5 py-2.5 rounded-xl border border-white/15 inline-block">{{ strategy.next_content_type }} &middot; {{ strategy.next_content_angle }}</span>
                 </div>
-                <div v-if="strategy.hook_direction" class="pt-2 flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
-                  <span class="text-xs font-mono uppercase font-bold text-blue-400 sm:w-1/3 shrink-0">Hook Direction</span>
-                  <span class="text-sm text-slate-200 sm:w-2/3">{{ strategy.hook_direction }}</span>
+                <div v-if="strategy.hook_direction" class="pt-4 flex flex-col sm:flex-row sm:items-baseline justify-between gap-3">
+                  <span class="text-xs sm:text-sm uppercase font-black tracking-wider text-white/75 sm:w-1/3 shrink-0">Hook Direction</span>
+                  <span class="text-white text-base sm:text-lg sm:w-2/3">{{ strategy.hook_direction }}</span>
                 </div>
-                <div v-if="strategy.trend_insight" class="pt-2 flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
-                  <span class="text-xs font-mono uppercase font-bold text-emerald-400 sm:w-1/3 shrink-0">📈 Trend Insight</span>
-                  <span class="text-sm text-slate-200 sm:w-2/3">{{ strategy.trend_insight }}</span>
+                <div v-if="strategy.trend_insight" class="pt-4 flex flex-col sm:flex-row sm:items-baseline justify-between gap-3">
+                  <span class="text-xs sm:text-sm uppercase font-black tracking-wider text-[#00E5FF] sm:w-1/3 shrink-0">Trend Intelligence</span>
+                  <span class="text-white text-base sm:text-lg sm:w-2/3">{{ strategy.trend_insight }}</span>
                 </div>
-                <div v-if="strategy.competitor_gap" class="pt-2 flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
-                  <span class="text-xs font-mono uppercase font-bold text-blue-400 sm:w-1/3 shrink-0">Competitor Gap</span>
-                  <span class="text-sm text-slate-200 sm:w-2/3">{{ strategy.competitor_gap }}</span>
+                <div v-if="strategy.competitor_gap" class="pt-4 flex flex-col sm:flex-row sm:items-baseline justify-between gap-3">
+                  <span class="text-xs sm:text-sm uppercase font-black tracking-wider text-white/75 sm:w-1/3 shrink-0">Competitor Gap</span>
+                  <span class="text-white text-base sm:text-lg sm:w-2/3">{{ strategy.competitor_gap }}</span>
                 </div>
-                <div v-if="strategy.best_time_to_post" class="pt-2 flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
-                  <span class="text-xs font-mono uppercase font-bold text-blue-400 sm:w-1/3 shrink-0">Best Time to Post</span>
-                  <span class="text-sm text-slate-200 sm:w-2/3 font-mono">{{ strategy.best_time_to_post }}</span>
+                <div v-if="strategy.best_time_to_post" class="pt-4 flex flex-col sm:flex-row sm:items-baseline justify-between gap-3">
+                  <span class="text-xs sm:text-sm uppercase font-black tracking-wider text-white/75 sm:w-1/3 shrink-0">Publishing Window</span>
+                  <span class="text-white text-base sm:text-lg sm:w-2/3 font-extrabold text-[#00E5FF]">{{ strategy.best_time_to_post }}</span>
                 </div>
-                <div v-if="strategy.estimated_impact" class="pt-2 flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
-                  <span class="text-xs font-mono uppercase font-bold text-indigo-400 sm:w-1/3 shrink-0">Expected Impact</span>
-                  <span class="text-sm text-indigo-300 font-bold sm:w-2/3">{{ strategy.estimated_impact }}</span>
+                <div v-if="strategy.estimated_impact" class="pt-4 flex flex-col sm:flex-row sm:items-baseline justify-between gap-3">
+                  <span class="text-xs sm:text-sm uppercase font-black tracking-wider text-[#E50914] sm:w-1/3 shrink-0">Expected Velocity</span>
+                  <span class="text-white text-2xl sm:text-3xl font-extrabold sm:w-2/3">{{ strategy.estimated_impact }}</span>
                 </div>
-                <div v-if="strategy.strategic_reasoning" class="pt-3">
-                  <span class="block text-xs font-mono uppercase font-bold text-slate-400 mb-1">Strategic Reasoning:</span>
-                  <p class="text-xs text-slate-300 leading-relaxed bg-blue-950/40 p-3.5 rounded-xl border border-blue-500/20">{{ strategy.strategic_reasoning }}</p>
+                <div v-if="strategy.strategic_reasoning" class="pt-6">
+                  <span class="block text-xs sm:text-sm uppercase font-black tracking-widest text-white/80 mb-3">Strategic Reasoning Architecture:</span>
+                  <p class="text-base sm:text-lg text-white/90 leading-relaxed bg-[#1A1E2E] p-7 rounded-3xl border border-white/15 shadow-inner">{{ strategy.strategic_reasoning }}</p>
                 </div>
               </div>
             </div>
 
-            <!-- CARD 5: READY-TO-RECORD SCRIPT ✎ -->
-            <div v-if="script" class="p-7 rounded-[2.5rem] bg-purple-950/20 backdrop-blur-xl border border-purple-500/30 hover:border-purple-500/50 hover:shadow-[0_0_40px_rgba(168,85,247,0.3)] transition-all duration-300 space-y-6 animate-fadeIn">
-              <div class="flex items-center justify-between">
-                <h3 class="text-lg font-bold font-display text-purple-400 flex items-center gap-2">
-                  <span>✎ Ready-to-Record Script</span>
+            <!-- CARD 5: PRODUCTION TELEPROMPTER SCRIPT DECK -->
+            <div v-if="script" class="p-8 sm:p-14 rounded-[2.5rem] bg-[#141518]/95 backdrop-blur-2xl text-white border-2 border-[#E50914]/60 shadow-[0_45px_120px_rgba(229,9,20,0.3)] space-y-10 relative overflow-hidden">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-white/15 pb-6 gap-4 relative z-10">
+                <h3 class="font-durer text-3xl sm:text-4xl font-black uppercase tracking-[0.02em] text-white flex items-center gap-4">
+                  <span class="w-4 h-4 rounded-full bg-[#E50914] animate-pulse"></span>
+                  <span>Production Teleprompter</span>
                 </h3>
-                <button @click="copyText(copyScript, 'script')" type="button" class="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white shadow-[0_0_15px_rgba(168,85,247,0.4)] text-xs font-bold uppercase tracking-wider transition-all">
-                  {{ copiedId === 'script' ? '✓ Copied Script!' : 'Copy Full Script' }}
+                <button @click="copyText(copyScript, 'script')" type="button" class="px-8 py-4 rounded-xl bg-[#E50914] hover:bg-white hover:text-[#111111] text-white shadow-[0_15px_35px_rgba(229,9,20,0.5)] border border-white/20 card-ui text-xs sm:text-sm font-extrabold uppercase tracking-wider transition-all hover:scale-105 self-start sm:self-auto">
+                  {{ copiedId === 'script' ? 'SCRIPT COPIED TO CLIPBOARD ✓' : 'COPY FULL SCRIPT DECK' }}
                 </button>
               </div>
 
-              <!-- Script Body Sections -->
-              <div class="space-y-4">
-                <div v-if="script.hook" class="p-4 rounded-2xl bg-purple-950/50 border border-purple-500/40 shadow-inner">
-                  <div class="text-[10px] font-mono font-extrabold text-purple-300 uppercase tracking-widest mb-1.5">HOOK &middot; 0:00–0:03</div>
-                  <div class="text-sm font-medium text-white leading-relaxed whitespace-pre-wrap">{{ script.hook }}</div>
+              <!-- Script Sections -->
+              <div class="space-y-6 relative z-10">
+                <div v-if="script.hook" class="p-6 sm:p-8 rounded-3xl bg-[#E50914]/20 border border-[#E50914]/60 shadow-[0_15px_40px_rgba(229,9,20,0.3)]">
+                  <div class="card-ui text-xs sm:text-sm font-black text-[#E50914] uppercase tracking-widest mb-3 flex items-center gap-2.5">
+                    <span class="w-3 h-3 rounded-full bg-[#E50914] shadow-[0_0_10px_#E50914]"></span>
+                    <span>HOOK &middot; 0:00–0:03 // CRITICAL RETENTION WINDOW</span>
+                  </div>
+                  <div class="card-ui text-xl sm:text-3xl font-bold text-white leading-relaxed whitespace-pre-wrap">{{ script.hook }}</div>
                 </div>
 
-                <div v-if="script.body" class="p-4 rounded-2xl bg-slate-900/90 border border-slate-800">
-                  <div class="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest mb-1.5">BODY &middot; 0:03–0:25</div>
-                  <div class="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{{ script.body }}</div>
+                <div v-if="script.body" class="p-6 sm:p-8 rounded-3xl bg-[#141728] border border-white/15 shadow-inner">
+                  <div class="card-ui text-xs sm:text-sm font-black text-white/80 uppercase tracking-widest mb-3">BODY &middot; 0:03–0:25 // NARRATIVE ENGAGEMENT</div>
+                  <div class="card-ui text-base sm:text-xl font-medium text-white/95 leading-relaxed whitespace-pre-wrap">{{ script.body }}</div>
                 </div>
 
-                <div v-if="script.cta" class="p-4 rounded-2xl bg-slate-900/90 border border-purple-500/30">
-                  <div class="text-[10px] font-mono font-extrabold text-purple-400 uppercase tracking-widest mb-1.5">CALL TO ACTION &middot; 0:25–0:32</div>
-                  <div class="text-sm font-semibold text-white leading-relaxed whitespace-pre-wrap">{{ script.cta }}</div>
+                <div v-if="script.cta" class="p-6 sm:p-8 rounded-3xl bg-[#141728] border border-white/25 shadow-md">
+                  <div class="card-ui text-xs sm:text-sm font-black text-[#00E5FF] uppercase tracking-widest mb-3 flex items-center gap-2.5">
+                    <span class="w-3 h-3 rounded-full bg-[#00E5FF]"></span>
+                    <span>CALL TO ACTION &middot; 0:25–0:32 // CONVERSION ENGINE</span>
+                  </div>
+                  <div class="card-ui text-lg sm:text-xl font-bold text-white leading-relaxed whitespace-pre-wrap">{{ script.cta }}</div>
                 </div>
 
-                <div v-if="script.text_overlays && script.text_overlays.length" class="p-4 rounded-2xl bg-[#070a14] border border-slate-800">
-                  <div class="text-[10px] font-mono font-bold text-indigo-400 uppercase tracking-widest mb-2">DYNAMIC TEXT OVERLAYS</div>
-                  <ol class="list-decimal list-inside text-xs text-slate-300 space-y-1 font-mono">
-                    <li v-for="(ov, idx) in script.text_overlays" :key="idx">{{ ov }}</li>
+                <div v-if="script.text_overlays && script.text_overlays.length" class="p-6 sm:p-8 rounded-3xl bg-[#0E111E] border border-white/15">
+                  <div class="card-ui text-xs sm:text-sm font-black text-white/85 uppercase tracking-wider mb-4 flex items-center gap-2.5">
+                    <span class="w-2 h-2 rounded-full bg-white/60"></span>
+                    <span>DYNAMIC TEXT OVERLAYS // SCREEN LAYER</span>
+                  </div>
+                  <ol class="list-decimal list-inside card-ui text-base sm:text-lg text-white/95 space-y-3 font-medium">
+                    <li v-for="(ov, idx) in script.text_overlays" :key="idx" class="pl-2">{{ ov }}</li>
                   </ol>
                 </div>
 
-                <div v-if="script.b_roll_suggestions && script.b_roll_suggestions.length" class="p-4 rounded-2xl bg-[#070a14] border border-slate-800">
-                  <div class="text-[10px] font-mono font-bold text-purple-400 uppercase tracking-widest mb-2">B-ROLL SHOTS & VISUAL INSTRUCTIONS</div>
-                  <ol class="list-decimal list-inside text-xs text-slate-300 space-y-1.5">
-                    <li v-for="(broll, idx) in script.b_roll_suggestions" :key="idx">{{ broll }}</li>
+                <div v-if="script.b_roll_suggestions && script.b_roll_suggestions.length" class="p-6 sm:p-8 rounded-3xl bg-[#0E111E] border border-white/15">
+                  <div class="card-ui text-xs sm:text-sm font-black text-white/85 uppercase tracking-wider mb-4 flex items-center gap-2.5">
+                    <span class="w-2 h-2 rounded-full bg-white/60"></span>
+                    <span>B-ROLL SHOTS &amp; VISUAL DIRECTION // CUTAWAYS</span>
+                  </div>
+                  <ol class="list-decimal list-inside card-ui text-base sm:text-lg text-white/95 space-y-3 font-medium">
+                    <li v-for="(broll, idx) in script.b_roll_suggestions" :key="idx" class="pl-2">{{ broll }}</li>
                   </ol>
                 </div>
 
-                <div v-if="script.delivery_notes" class="p-3.5 rounded-xl bg-purple-900/20 border border-purple-500/20 text-xs text-purple-200 flex items-center justify-between">
-                  <span><strong>Delivery Notes:</strong> {{ script.delivery_notes }}</span>
-                  <span v-if="script.estimated_length" class="font-mono text-[11px] shrink-0 bg-purple-500/20 px-2.5 py-1 rounded-lg border border-purple-500/30">{{ script.estimated_length }}</span>
+                <div v-if="script.delivery_notes" class="p-6 rounded-2xl bg-white/5 border border-white/15 card-ui text-sm sm:text-base font-medium text-white/90 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <span><strong class="text-[#00E5FF] font-extrabold uppercase tracking-wider">Delivery Notes:</strong> {{ script.delivery_notes }}</span>
+                  <span v-if="script.estimated_length" class="font-extrabold text-xs sm:text-sm shrink-0 bg-[#E50914] text-white px-5 py-2.5 rounded-xl tracking-widest uppercase shadow-md border border-white/20">{{ script.estimated_length }}</span>
                 </div>
               </div>
             </div>
 
-            <div v-if="currentState === STATES.COMPLETE" class="pt-4 text-center animate-fadeIn">
+            <div v-if="currentState === STATES.COMPLETE" class="pt-12 text-center relative z-10">
               <a 
                 href="https://instagram.com/piyush._maharana" 
                 target="_blank"
-                class="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-slate-900/90 hover:bg-slate-800 border border-indigo-500/40 text-xs sm:text-sm font-bold text-indigo-400 hover:text-white transition-all shadow-[0_0_20px_rgba(99,102,241,0.25)] hover:shadow-[0_0_30px_rgba(99,102,241,0.5)]"
+                class="inline-flex items-center gap-4 px-12 py-6 rounded-2xl bg-[#111420] hover:bg-[#E50914] border border-white/20 text-base font-extrabold text-white uppercase tracking-wider transition-all duration-300 shadow-[0_20px_50px_rgba(0,0,0,0.6)] hover:scale-105 card-ui"
               >
-                <span>🚀 Follow the build &middot; @piyush._maharana →</span>
+                <span class="w-3 h-3 rounded-full bg-[#00E5FF] group-hover:bg-white transition-colors"></span>
+                <span>Follow the architecture &middot; @piyush._maharana →</span>
               </a>
             </div>
 
           </div>
         </div>
-
       </div>
-    </main>
+    </section>
+
   </div>
 </template>
+
+<style scoped>
+/* Crisp Arial / Geometric UI font styling specifically engineered for high-density diagnostic cards */
+.card-ui {
+  font-family: Arial, "Helvetica Neue", Helvetica, "Liberation Sans", sans-serif !important;
+  letter-spacing: 0.01em;
+}
+
+/* Custom high-contrast executive scrollbar and smooth transitions for media decks */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(14, 17, 28, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(229, 9, 20, 0.6);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(229, 9, 20, 1);
+}
+
+@media (max-width: 640px) {
+  .editorial-heading, .durer-heading {
+    word-break: break-word;
+  }
+}
+</style>
