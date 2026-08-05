@@ -29,7 +29,7 @@ let tickerCallback = null
 
 // Input Form Reactive State
 const contentType = ref('Reel') // 'Reel' | 'Carousel' | 'Static Post'
-const platform = ref('Instagram') // 'Instagram' | 'LinkedIn'
+const platform = ref('Instagram') // Exclusive distribution channel: Instagram
 const isDragging = ref(false)
 const uploadedFiles = ref([]) // Array of { file, url, name, size, type, category: 'video' | 'image' }
 const fileInput = ref(null)
@@ -718,17 +718,15 @@ onUnmounted(() => {
 
                 <!-- Target Distribution Channel -->
                 <div class="space-y-3">
-                  <label class="card-ui text-sm sm:text-base font-bold uppercase tracking-wide text-[#2A2D35] block">Target Distribution Channel</label>
-                  <div class="grid grid-cols-2 gap-2 bg-[#EBE7DF] p-2 rounded-2xl border border-[#D8D3C7] shadow-inner">
-                    <button 
-                      v-for="plat in ['Instagram', 'LinkedIn']" :key="plat"
-                      @click="platform = plat"
-                      type="button"
-                      :class="platform === plat ? 'bg-[#E50914] text-white font-extrabold shadow-[0_5px_15px_rgba(229,9,20,0.35)] border border-[#C40711]' : 'text-[#5C606E] hover:text-[#141518] font-semibold hover:bg-white/60'"
-                      class="py-4 text-sm sm:text-base rounded-xl transition-all duration-300 card-ui uppercase tracking-wide"
+                  <div class="flex items-center justify-between">
+                    <label class="card-ui text-sm sm:text-base font-bold uppercase tracking-wide text-[#2A2D35] block">Target Distribution Channel</label>
+                  </div>
+                  <div class="grid grid-cols-1 bg-[#EBE7DF] p-2 rounded-2xl border border-[#D8D3C7] shadow-inner">
+                    <div 
+                      class="py-4 px-6 text-sm sm:text-base rounded-xl bg-[#E50914] text-white font-extrabold shadow-[0_5px_15px_rgba(229,9,20,0.35)] border border-[#C40711] card-ui uppercase tracking-wide flex items-center justify-center gap-3.5 select-none"
                     >
-                      {{ plat }}
-                    </button>
+                      <span>INSTAGRAM</span>
+                    </div>
                   </div>
                 </div>
               </div>

@@ -64,7 +64,7 @@ app.post('/api/analyse', upload.single('mediaFile'), async (req, res) => {
 
     if (file) {
       const sizeMB = (file.size / (1024 * 1024)).toFixed(2)
-      mediaInfo = `Uploaded Asset: ${file.originalname} (${file.mimetype}, ${sizeMB}MB), Content Type: ${contentType || 'Reel'} for ${platform || 'Instagram'}`
+      mediaInfo = `Uploaded Asset: ${file.originalname} (${file.mimetype}, ${sizeMB}MB), Content Type: ${contentType || 'Reel'} for Instagram`
 
       const b64 = file.buffer.toString('base64')
       mediaFilePayload = `data:${file.mimetype};base64,${b64}`
@@ -87,7 +87,7 @@ app.post('/api/analyse', upload.single('mediaFile'), async (req, res) => {
       saves: saves ? parseInt(saves, 10) : 0,
       profileVisits: profileVisits ? parseInt(profileVisits, 10) : 0,
       followersGained: followersGained ? parseInt(followersGained, 10) : 0,
-      platform: platform || 'Instagram',
+      platform: 'Instagram',
       contentType: contentType || 'Reel'
     }
 
@@ -160,7 +160,7 @@ app.post('/api/ingest-url', async (req, res) => {
           transcript: mediaContext.caption,
           analytics: { 
             note: "Private numeric metrics (views, watch time, saves) will be provided in Step 3 via UI modal. Focus strictly on visual hook strength, structural editing cuts, typography overlays, and spoken script pacing without mentioning view counts.",
-            platform: platform || 'Instagram',
+            platform: 'Instagram',
             contentType: contentType || 'Reel'
           },
           brandContext: "Creator seeking retention optimization and algorithmic velocity."

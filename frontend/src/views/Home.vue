@@ -658,7 +658,7 @@ onUnmounted(() => {
             <a href="#" class="interactive-hover hover:text-[#E50914] transition-colors">Privacy Policy</a>
             <a href="#" class="interactive-hover hover:text-[#E50914] transition-colors">Terms of Service</a>
             <a href="#" class="interactive-hover hover:text-[#E50914] transition-colors">Security OS</a>
-            <a href="https://linkedin.com" target="_blank" class="interactive-hover hover:text-[#E50914] transition-colors">LinkedIn</a>
+            <a href="https://instagram.com" target="_blank" class="interactive-hover hover:text-[#E50914] transition-colors">Instagram</a>
           </div>
         </div>
 
