@@ -1,0 +1,57 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String   // Added for local auth
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  brands    Brand[]
+  memberships BrandMember[]
+
+  @@map("users")
+}
+
+model Brand {
+  id               String   @id @default(uuid())
+  ownerUserId      String   @map("owner_user_id")
+  name             String
+  onboardingStatus String   @default("PENDING") @map("onboarding_status")
+  positioning      String?
+  audience         String?
+  goals            String?
+  voiceStyleInputs String?  @map("voice_style_inputs")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  owner            User          @relation(fields: [ownerUserId], references: [id])
+  members          BrandMember[]
+
+  @@map("brands")
+}
+
+model BrandMember {
+  brandId   String   @map("brand_id")
+  userId    String   @map("user_id")
+  role      String   @default("MEMBER")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([brandId, userId])
+  @@map("brand_members")
+}
