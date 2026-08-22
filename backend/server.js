@@ -2,11 +2,16 @@ import express from 'express'
 import cors from 'cors'
 import multer from 'multer'
 import dotenv from 'dotenv'
+import cookieParser from 'cookie-parser'
 import { executeThreeAgentPipeline } from './services/runAnalysis.js'
 import { scrapeInstagramPost } from './services/instagramScraper.js'
 import { runVisualAnalyst } from './services/agentVisualAnalyst.js'
 import { runStrategist } from './services/agentStrategist.js'
 import { runScriptwriter } from './services/agentScriptwriter.js'
+
+// V2 Routers
+import authRouter from './routes/v2/auth.js'
+import brandsRouter from './routes/v2/brands.js'
 
 dotenv.config()
 
@@ -17,9 +22,18 @@ const PORT = process.env.PORT || 3001
 const backgroundJobs = new Map()
 
 // Enable CORS and JSON parsing
-app.use(cors())
+// Need credentials: true for cookies to work across domains (if frontend is separate)
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true
+}))
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
+app.use(cookieParser())
+
+// Mount V2 API Routes
+app.use('/api/v2/auth', authRouter)
+app.use('/api/v2/brands', brandsRouter)
 
 // Configure Multer in-memory upload handler (up to 60MB for video content)
 const upload = multer({
