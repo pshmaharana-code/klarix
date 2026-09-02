@@ -1,6 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 import Home from './views/Home.vue'
+import Dashboard from './views/Dashboard.vue'
+import Connect from './views/Connect.vue'
 
 const routes = [
   {
@@ -31,7 +33,13 @@ const routes = [
   {
     path: '/dashboard',
     name: 'Dashboard',
-    component: () => import('./views/Dashboard.vue'),
+    component: Dashboard,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/onboarding/connect',
+    name: 'Connect',
+    component: Connect,
     meta: { requiresAuth: true }
   }
 ]

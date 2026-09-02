@@ -39,6 +39,8 @@ model Brand {
 
   owner            User          @relation(fields: [ownerUserId], references: [id])
   members          BrandMember[]
+  socialAccounts   SocialAccount[]
+  jobs             Job[]
 
   @@map("brands")
 }
@@ -54,4 +56,63 @@ model BrandMember {
 
   @@id([brandId, userId])
   @@map("brand_members")
+}
+
+model SocialAccount {
+  id                String   @id @default(uuid())
+  brandId           String   @map("brand_id")
+  platform          String
+  externalAccountId String   @map("external_account_id")
+  username          String
+  accountType       String?  @map("account_type")
+  profileMetadata   Json?    @map("profile_metadata")
+  connectionStatus  String   @default("CONNECTED") @map("connection_status")
+  encryptedToken    String?  @map("encrypted_token")
+  expiry            DateTime?
+  lastSync          DateTime? @map("last_sync")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  brand             Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([platform, externalAccountId])
+  @@map("social_accounts")
+}
+
+model Job {
+  id               String   @id @default(uuid())
+  brandId          String   @map("brand_id")
+  type             String
+  state            String   @default("CREATED")
+  idempotencyKey   String   @map("idempotency_key")
+  progressPercent  Int      @default(0) @map("progress_percent")
+  progressStep     String?  @map("progress_step")
+  progressMessage  String?  @map("progress_message")
+  input            Json?
+  result           Json?
+  error            Json?
+  attempts         Int      @default(0)
+  startedAt        DateTime? @map("started_at")
+  completedAt      DateTime? @map("completed_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  brand            Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  logs             JobLog[]
+
+  @@unique([brandId, idempotencyKey])
+  @@map("jobs")
+}
+
+model JobLog {
+  id        String   @id @default(uuid())
+  jobId     String   @map("job_id")
+  level     String   @default("INFO")
+  event     String
+  context   Json?
+  timestamp DateTime @default(now())
+
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@map("job_logs")
 }
