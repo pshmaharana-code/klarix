@@ -4,11 +4,10 @@
  * No real Facebook Graph APIs are called here.
  */
 
-function generateAuthUrl(brandId) {
-  // In a real implementation, this would build the OAuth URL with state, clientId, redirectUri, scopes.
+function generateAuthUrl(state) {
+  // The opaque state is generated and persisted by the application, never trusted from the browser.
   const redirectUri = encodeURIComponent(`http://localhost:5173/onboarding/connect`);
-  const state = encodeURIComponent(JSON.stringify({ brandId }));
-  return `https://mock.instagram.com/oauth/authorize?client_id=mock_client&redirect_uri=${redirectUri}&scope=instagram_basic,instagram_manage_insights,pages_show_list&response_type=code&state=${state}`;
+  return `https://mock.instagram.com/oauth/authorize?client_id=mock_client&redirect_uri=${redirectUri}&scope=instagram_basic,instagram_manage_insights,pages_show_list&response_type=code&state=${encodeURIComponent(state)}`;
 }
 
 async function exchangeCodeForToken(code) {
@@ -37,7 +36,7 @@ async function fetchProfile(accessToken) {
   // Return deterministic mock data
   return {
     platform: 'INSTAGRAM',
-    externalAccountId: 'mock_ext_acct_12345',
+    externalAccountId: accessToken.replace('mock_access_token_', 'mock_ext_acct_'),
     username: 'mocked_brand_official',
     accountType: 'BUSINESS',
     profilePictureUrl: 'https://via.placeholder.com/150',

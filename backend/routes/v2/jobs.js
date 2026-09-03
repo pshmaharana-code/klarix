@@ -2,6 +2,7 @@ import express from 'express';
 const router = express.Router({ mergeParams: true });
 import { requireBrandAccess } from '../../middleware/brandContext.js';
 import { getJob } from '../../jobs/jobService.js';
+import { toPublicJob } from '../../lib/publicJob.js';
 
 // GET /api/v2/brands/:brandId/jobs/:jobId
 router.get('/:jobId', requireBrandAccess, async (req, res) => {
@@ -16,7 +17,7 @@ router.get('/:jobId', requireBrandAccess, async (req, res) => {
 
     res.json({
       success: true,
-      data: { job }
+      data: { job: toPublicJob(job) }
     });
   } catch (error) {
     console.error('[Jobs Route] Error:', error);
