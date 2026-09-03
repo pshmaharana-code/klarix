@@ -1,6 +1,7 @@
 import { Queue } from 'bullmq';
+import { loadConfig } from '../lib/config.js';
 
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+const REDIS_URL = loadConfig().redisUrl;
 
 const connection = {
   url: REDIS_URL,

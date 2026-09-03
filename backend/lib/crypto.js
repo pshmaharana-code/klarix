@@ -1,17 +1,15 @@
 import crypto from 'crypto';
+import { loadConfig } from './config.js';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
 
 function getKey() {
-  const keyBase = process.env.META_ENCRYPTION_KEY;
-  if (!keyBase) {
-    throw new Error('META_ENCRYPTION_KEY environment variable is required');
-  }
+  const keyBase = loadConfig().encryptionKey;
   if (/^[0-9a-fA-F]{64}$/.test(keyBase)) {
     return Buffer.from(keyBase, 'hex');
   }
-  return crypto.createHash('sha256').update(keyBase).digest();
+  return Buffer.from(keyBase, 'base64');
 }
 
 function encrypt(text) {
@@ -25,7 +23,7 @@ function encrypt(text) {
   
   const authTag = cipher.getAuthTag().toString('base64');
   
-  return `${iv.toString('base64')}.${authTag}.${encrypted}`;
+  return `v1.${iv.toString('base64')}.${authTag}.${encrypted}`;
 }
 
 function decrypt(encryptedText) {
@@ -33,11 +31,11 @@ function decrypt(encryptedText) {
   
   try {
     const parts = encryptedText.split('.');
-    if (parts.length !== 3) {
+    if (parts.length !== 4 || parts[0] !== 'v1') {
       throw new Error('Invalid encrypted text format');
     }
     
-    const [ivBase64, authTagBase64, ciphertextBase64] = parts;
+    const [, ivBase64, authTagBase64, ciphertextBase64] = parts;
     const key = getKey();
     const iv = Buffer.from(ivBase64, 'base64');
     const authTag = Buffer.from(authTagBase64, 'base64');

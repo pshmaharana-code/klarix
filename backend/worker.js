@@ -1,15 +1,14 @@
-import dotenv from 'dotenv';
-dotenv.config();
 import { Worker } from 'bullmq';
 import { PrismaClient } from '@prisma/client';
 import { connection } from './jobs/queue.js';
 import * as metaAdapter from './integrations/metaAdapter.js';
 import * as cryptoLib from './lib/crypto.js';
+import { loadConfig, redactRedisUrl } from './lib/config.js';
 
 const prisma = new PrismaClient();
 
 console.log('👷 Klarix V2 Worker starting...');
-console.log('🔌 Connecting to Redis:', process.env.REDIS_URL || 'redis://localhost:6379');
+console.log('🔌 Connecting to Redis:', redactRedisUrl(loadConfig().redisUrl));
 
 const worker = new Worker('klarix-jobs', async job => {
   const { jobId, brandId, input } = job.data;

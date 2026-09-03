@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { requireAuth } from '../../middleware/auth.js';
+import { loadConfig } from '../../lib/config.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -28,7 +29,7 @@ router.post('/register', async (req, res) => {
       }
     });
 
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET || 'klarix_super_secret_jwt_key_change_me_in_production', { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user.id }, loadConfig().jwtSecret, { expiresIn: '7d' });
     
     res.cookie('token', token, {
       httpOnly: true,
@@ -62,7 +63,7 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ success: false, error: 'UNAUTHENTICATED', message: 'Invalid credentials' });
     }
 
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET || 'klarix_super_secret_jwt_key_change_me_in_production', { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user.id }, loadConfig().jwtSecret, { expiresIn: '7d' });
     
     res.cookie('token', token, {
       httpOnly: true,
