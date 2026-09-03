@@ -80,6 +80,7 @@ let pollInterval = null
 const fetchJobStatus = async () => {
   try {
     const response = await fetch(`/api/v2/brands/${props.brandId}/jobs/${props.jobId}`)
+    if (!response.ok) throw new Error(`Job status request failed (${response.status})`)
     const data = await response.json()
 
     if (data.success && data.data.job) {
@@ -93,7 +94,7 @@ const fetchJobStatus = async () => {
         resultData.value = job.result
         stopPolling()
       } else if (job.state === 'FAILED') {
-        errorMessage.value = job.error?.message || 'Failed processing job'
+        errorMessage.value = job.error?.code || 'Failed processing job'
         stopPolling()
       }
     }

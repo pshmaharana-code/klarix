@@ -28,7 +28,7 @@
       <div v-else>
         <JobProgress 
           :jobId="activeJobId" 
-          :brandId="authStore.currentBrand?.id"
+          :brandId="authStore.activeBrand?.id"
           @retry="handleRetry"
           @continue="handleContinue"
         />
@@ -62,7 +62,7 @@ onMounted(() => {
 const initiateConnection = async () => {
   isStarting.value = true
   try {
-    const brandId = authStore.currentBrand?.id
+    const brandId = authStore.activeBrand?.id
     if (!brandId) throw new Error('No brand selected')
 
     // Fetch the mock OAuth URL from our backend
@@ -84,18 +84,20 @@ const initiateConnection = async () => {
 
 const startSyncJob = async (oauthCode) => {
   try {
-    const brandId = authStore.currentBrand?.id
+    const brandId = authStore.activeBrand?.id
     if (!brandId) return
 
-    // This must match the idempotency contract
-    const idempotencyKey = `sync-meta-${Date.now()}`
+    const state = route.query.state
+    const idempotencyKey = sessionStorage.getItem('klarix.oauth.idempotencyKey') || crypto.randomUUID()
+    sessionStorage.setItem('klarix.oauth.idempotencyKey', idempotencyKey)
 
     const res = await fetch(`/api/v2/brands/${brandId}/sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         idempotencyKey,
-        code: oauthCode
+        code: oauthCode,
+        state
       })
     })
 
@@ -103,6 +105,7 @@ const startSyncJob = async (oauthCode) => {
     if (res.status === 202 && data.success) {
       // Backend successfully queued the job
       activeJobId.value = data.data.job.id
+      sessionStorage.removeItem('klarix.oauth.idempotencyKey')
       
       // Clean up the URL so refreshing doesn't re-submit the same code
       router.replace({ query: {} })
@@ -118,7 +121,7 @@ const startSyncJob = async (oauthCode) => {
 
 const handleRetry = () => {
   activeJobId.value = null
-  isStarting.value = false
+  initiateConnection()
 }
 
 const handleContinue = () => {
