@@ -12,6 +12,23 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum JobType {
+  SYNC_ACCOUNT
+}
+
+enum JobState {
+  QUEUED
+  PROCESSING
+  RETRY_PENDING
+  COMPLETED
+  FAILED
+}
+
+enum JobLogLevel {
+  INFO
+  ERROR
+}
+
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
@@ -84,8 +101,8 @@ model SocialAccount {
 model Job {
   id               String   @id @default(uuid())
   brandId          String   @map("brand_id")
-  type             String
-  state            String   @default("CREATED")
+  type             JobType
+  state            JobState @default(QUEUED)
   idempotencyKey   String   @map("idempotency_key")
   progressPercent  Int      @default(0) @map("progress_percent")
   progressStep     String?  @map("progress_step")
@@ -110,7 +127,7 @@ model Job {
 model JobLog {
   id        String   @id @default(uuid())
   jobId     String   @map("job_id")
-  level     String   @default("INFO")
+  level     JobLogLevel @default(INFO)
   event     String
   context   Json?
   timestamp DateTime @default(now())
@@ -118,6 +135,7 @@ model JobLog {
   job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@map("job_logs")
+  @@index([jobId, timestamp])
 }
 
 model JobOutbox {
