@@ -1,6 +1,7 @@
 import { Worker } from 'bullmq';
 import { PrismaClient } from '@prisma/client';
 import { connection } from './jobs/queue.js';
+import { dispatchOutboxBatch } from './jobs/jobService.js';
 import * as metaAdapter from './integrations/metaAdapter.js';
 import * as cryptoLib from './lib/crypto.js';
 import { loadConfig, redactRedisUrl } from './lib/config.js';
@@ -15,27 +16,26 @@ const worker = new Worker('klarix-jobs', async job => {
 
   console.log(`[Worker] Received job ${job.id} for brand ${brandId}`);
 
-  // 1. Verify Job State in Postgres (At-least-once delivery protection)
-  const dbJob = await prisma.job.findUnique({ where: { id: jobId } });
-  if (!dbJob) throw new Error('Job not found in database');
-  
-  if (dbJob.state === 'COMPLETED') {
-    console.log(`[Worker] Job ${jobId} already COMPLETED in Postgres. Skipping.`);
-    return { skipped: true, reason: 'Already completed' };
-  }
-
-  // 2. Mark PROCESSING
-  await prisma.job.update({
-    where: { id: jobId },
+  // Atomically claim only a queueable job. This is the database backstop for
+  // BullMQ's at-least-once delivery semantics and multiple worker processes.
+  const claim = await prisma.job.updateMany({
+    where: { id: jobId, state: { in: ['QUEUED', 'RETRY_PENDING'] } },
     data: {
       state: 'PROCESSING',
+      attempts: { increment: 1 },
       startedAt: new Date(),
       progressPercent: 10,
       progressStep: 'Connecting',
-      progressMessage: 'Connecting to Meta...',
-      logs: { create: { event: 'PROCESSING_START', level: 'INFO' } }
+      progressMessage: 'Connecting to Meta...'
     }
   });
+  if (claim.count !== 1) {
+    console.log(`[Worker] Job ${jobId} was already claimed or completed. Skipping.`);
+    return { skipped: true, reason: 'Already completed' };
+  }
+  const dbJob = await prisma.job.findUnique({ where: { id: jobId } });
+  if (!dbJob) throw new Error('Job not found in database');
+  await prisma.jobLog.create({ data: { jobId, event: 'PROCESSING_START', level: 'INFO' } });
 
   try {
     if (dbJob.type === 'SYNC_ACCOUNT') {
@@ -137,14 +137,15 @@ const worker = new Worker('klarix-jobs', async job => {
   } catch (error) {
     console.error(`[Worker] Job ${jobId} failed:`, error.message);
     // 4. Mark FAILED
+    const willRetry = job.attemptsMade + 1 < (job.opts.attempts || 1);
     await prisma.job.update({
       where: { id: jobId },
       data: {
-        state: 'FAILED',
-        completedAt: new Date(),
+        state: willRetry ? 'RETRY_PENDING' : 'FAILED',
+        completedAt: willRetry ? null : new Date(),
         error: { code: error.code || 'PROCESSING_FAILED' },
-        progressStep: 'Failed',
-        progressMessage: 'Encountered an error during processing',
+        progressStep: willRetry ? 'Retry pending' : 'Failed',
+        progressMessage: willRetry ? 'Retrying connection shortly' : 'Connection could not be completed',
         logs: { create: { event: 'PROCESSING_FAILED', level: 'ERROR', context: { code: error.code || 'PROCESSING_FAILED' } } }
       }
     });
@@ -153,8 +154,20 @@ const worker = new Worker('klarix-jobs', async job => {
 }, { connection });
 
 worker.on('failed', (job, err) => {
-  console.log(`[Worker] BullMQ Job ${job.id} failed with ${err.message}`);
+  console.log(`[Worker] BullMQ Job ${job?.id} failed with ${err.name}`);
 });
+
+worker.on('error', error => console.error('[Worker] Redis/queue error:', error.name));
+const outboxInterval = setInterval(() => dispatchOutboxBatch().catch(error => console.error('[Outbox] Dispatch error:', error.name)), 5_000);
+dispatchOutboxBatch().catch(error => console.error('[Outbox] Initial dispatch error:', error.name));
+
+async function shutdown() {
+  clearInterval(outboxInterval);
+  await worker.close();
+  await prisma.$disconnect();
+}
+process.once('SIGTERM', () => shutdown().finally(() => process.exit(0)));
+process.once('SIGINT', () => shutdown().finally(() => process.exit(0)));
 
 async function updateProgress(jobId, percent, step, message) {
   await prisma.job.update({

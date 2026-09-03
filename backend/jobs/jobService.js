@@ -3,8 +3,8 @@ const prisma = new PrismaClient();
 import { jobsQueue } from './queue.js';
 
 async function createAndEnqueueJob({ brandId, type, idempotencyKey, input = {} }) {
-  // 1. Try to create the job in Postgres.
-  // This will throw if the @@unique([brandId, idempotencyKey]) constraint is violated.
+  // The job and its outbox message are committed atomically. Redis publication is
+  // deliberately asynchronous so an outage cannot lose an accepted job.
   let job;
   try {
     job = await prisma.job.create({
@@ -12,7 +12,7 @@ async function createAndEnqueueJob({ brandId, type, idempotencyKey, input = {} }
         brandId,
         type,
         idempotencyKey,
-        state: 'CREATED',
+        state: 'QUEUED',
         input,
         progressPercent: 0,
         progressStep: 'Created',
@@ -23,7 +23,8 @@ async function createAndEnqueueJob({ brandId, type, idempotencyKey, input = {} }
             level: 'INFO',
             context: { idempotencyKey }
           }
-        }
+        },
+        outbox: { create: {} }
       }
     });
   } catch (error) {
@@ -36,52 +37,29 @@ async function createAndEnqueueJob({ brandId, type, idempotencyKey, input = {} }
     throw error;
   }
 
-  // 2. Try to enqueue in BullMQ
-  try {
-    await jobsQueue.add(
-      type,
-      { jobId: job.id, brandId, input },
-      { jobId: job.id } // Use the Postgres UUID as the BullMQ jobId to guarantee 1:1 mapping
-    );
-    
-    // 3. Update state to QUEUED
-    return await prisma.job.update({
-      where: { id: job.id },
-      data: {
-        state: 'QUEUED',
-        progressStep: 'Queued',
-        progressMessage: 'Waiting for worker',
-        logs: {
-          create: {
-            event: 'JOB_QUEUED',
-            level: 'INFO'
-          }
-        }
-      }
+  return job;
+}
+
+async function dispatchOutboxBatch(limit = 25) {
+  const entries = await prisma.jobOutbox.findMany({
+    where: { deliveredAt: null, OR: [{ claimedAt: null }, { claimedAt: { lt: new Date(Date.now() - 60_000) } }] },
+    take: limit,
+    orderBy: { createdAt: 'asc' }
+  });
+  for (const entry of entries) {
+    const claimed = await prisma.jobOutbox.updateMany({
+      where: { id: entry.id, deliveredAt: null, OR: [{ claimedAt: null }, { claimedAt: { lt: new Date(Date.now() - 60_000) } }] },
+      data: { claimedAt: new Date(), attempts: { increment: 1 } }
     });
-  } catch (queueError) {
-    console.error('[JobService] Failed to enqueue job to Redis:', queueError);
-    // Try to mark job as FAILED
+    if (claimed.count !== 1) continue;
     try {
-      await prisma.job.update({
-        where: { id: job.id },
-        data: {
-          state: 'FAILED',
-          progressStep: 'Failed to enqueue',
-          error: { message: 'QUEUE_UNAVAILABLE', details: queueError.message },
-          logs: {
-            create: {
-              event: 'ENQUEUE_FAILED',
-              level: 'ERROR',
-              context: { error: queueError.message }
-            }
-          }
-        }
-      });
-    } catch (dbError) {
-      console.error('[JobService] Critical: Failed to mark job as FAILED after queue error', dbError);
+      const job = await prisma.job.findUnique({ where: { id: entry.jobId } });
+      if (!job) continue;
+      await jobsQueue.add(job.type, { jobId: job.id, brandId: job.brandId, input: job.input }, { jobId: job.id });
+      await prisma.jobOutbox.update({ where: { id: entry.id }, data: { deliveredAt: new Date(), claimedAt: null, lastError: null } });
+    } catch {
+      await prisma.jobOutbox.update({ where: { id: entry.id }, data: { claimedAt: null, lastError: 'QUEUE_UNAVAILABLE' } });
     }
-    throw new Error('QUEUE_UNAVAILABLE');
   }
 }
 
@@ -93,5 +71,6 @@ async function getJob(brandId, jobId) {
 
 export {
   createAndEnqueueJob,
-  getJob
+  getJob,
+  dispatchOutboxBatch
 };

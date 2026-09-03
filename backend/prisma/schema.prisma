@@ -101,6 +101,7 @@ model Job {
 
   brand            Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
   logs             JobLog[]
+  outbox           JobOutbox?
 
   @@unique([brandId, idempotencyKey])
   @@map("jobs")
@@ -117,6 +118,22 @@ model JobLog {
   job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@map("job_logs")
+}
+
+model JobOutbox {
+  id          String   @id @default(uuid())
+  jobId       String   @unique @map("job_id")
+  deliveredAt DateTime? @map("delivered_at")
+  claimedAt   DateTime? @map("claimed_at")
+  attempts    Int      @default(0)
+  lastError   String?  @map("last_error")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([deliveredAt, claimedAt])
+  @@map("job_outbox")
 }
 
 model OAuthState {
