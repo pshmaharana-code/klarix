@@ -12,7 +12,7 @@ async function createAndEnqueueJob({ brandId, type, idempotencyKey, input = {} }
         brandId,
         type,
         idempotencyKey,
-        state: 'QUEUED',
+        state: 'CREATED',
         input,
         progressPercent: 0,
         progressStep: 'Created',
@@ -55,6 +55,13 @@ async function dispatchOutboxBatch(limit = 25) {
     try {
       const job = await prisma.job.findUnique({ where: { id: entry.jobId } });
       if (!job) continue;
+      // Promote CREATED → QUEUED before BullMQ delivery so clients can
+      // distinguish "accepted but not yet queued" from "in the queue".
+      // The worker's claim guard requires QUEUED or RETRY_PENDING, so
+      // this transition must happen before queue.add().
+      if (job.state === 'CREATED') {
+        await prisma.job.update({ where: { id: job.id }, data: { state: 'QUEUED' } });
+      }
       await jobsQueue.add(job.type, { jobId: job.id, brandId: job.brandId, input: job.input }, { jobId: job.id });
       await prisma.jobOutbox.update({ where: { id: entry.id }, data: { deliveredAt: new Date(), claimedAt: null, lastError: null } });
     } catch {
