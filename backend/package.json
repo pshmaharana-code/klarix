@@ -10,7 +10,7 @@
     "worker": "node worker.js",
     "db:deploy": "prisma migrate deploy",
     "test": "node --test test/v2-security.test.js",
-    "test:security": "node --experimental-test-module-mocks --test test/v2-phase2-security.test.js",
+    "test:security": "node --experimental-test-module-mocks --test test/v2-phase2-security.test.js test/v2-cancel.test.js",
     "test:all": "npm test && npm run test:security",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev"

@@ -76,8 +76,32 @@ async function getJob(brandId, jobId) {
   });
 }
 
+// Atomically cancel a job that is still waiting (CREATED or QUEUED).
+// Returns the updated job record on success, or null if the job could
+// not be cancelled (wrong state, wrong brand, or doesn't exist).
+// The WHERE clause races the worker's QUEUED → PROCESSING claim: only
+// one of them can win the conditional update.
+async function cancelJob(brandId, jobId) {
+  const cancelled = await prisma.job.updateMany({
+    where: {
+      id: jobId,
+      brandId,                               // brand isolation enforced in DB
+      state: { in: ['CREATED', 'QUEUED'] }   // only safe-to-cancel states
+    },
+    data: {
+      state: 'CANCELLED',
+      completedAt: new Date(),
+      progressStep: 'Cancelled',
+      progressMessage: 'Job was cancelled before processing began'
+    }
+  });
+  if (cancelled.count !== 1) return null; // state was wrong, or brand mismatch
+  return await prisma.job.findFirst({ where: { id: jobId, brandId } });
+}
+
 export {
   createAndEnqueueJob,
   getJob,
+  cancelJob,
   dispatchOutboxBatch
 };
