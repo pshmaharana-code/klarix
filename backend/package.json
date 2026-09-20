@@ -11,7 +11,8 @@
     "db:deploy": "prisma migrate deploy",
     "test": "node --test test/v2-security.test.js",
     "test:security": "node --experimental-test-module-mocks --test test/v2-phase2-security.test.js test/v2-cancel.test.js",
-    "test:all": "npm test && npm run test:security",
+    "test:gate2": "node --experimental-test-module-mocks --test test/v2-phase3-gate2.test.js",
+    "test:all": "npm test && npm run test:security && npm run test:gate2",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev"
   },
