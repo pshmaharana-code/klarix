@@ -1,8 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -12,33 +10,63 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums — Phase 1/2 preserved exactly; Phase 3 additions annotated
+// ─────────────────────────────────────────────────────────────────────────────
+
 enum JobType {
-  SYNC_ACCOUNT
+  SYNC_ACCOUNT   // Phase 2 — preserved
+  IMPORT_CONTENT // Phase 3
+  FETCH_METRICS  // Phase 3
 }
 
 enum JobState {
-  CREATED
-  QUEUED
-  PROCESSING
-  RETRY_PENDING
-  COMPLETED
-  FAILED
-  CANCELLED
+  CREATED        // Phase 2 — preserved
+  QUEUED         // Phase 2 — preserved
+  PROCESSING     // Phase 2 — preserved
+  RETRY_PENDING  // Phase 2 — preserved
+  COMPLETED      // Phase 2 — preserved
+  PARTIAL        // Phase 3 — parent job completed with some child failures
+  FAILED         // Phase 2 — preserved
+  CANCELLED      // Phase 2 — preserved
 }
 
 enum JobLogLevel {
-  INFO
-  ERROR
+  INFO  // Phase 2 — preserved
+  ERROR // Phase 2 — preserved
 }
 
-model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String   // Added for local auth
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+// Phase 3 enums ───────────────────────────────────────────────────────────────
 
-  brands    Brand[]
+enum ContentType {
+  REEL
+  IMAGE
+  CAROUSEL
+  VIDEO
+  OTHER
+}
+
+enum AnalysisStatus {
+  NOT_STARTED // Default: content imported but not yet queued for analysis
+  QUEUED      // Analysis job created
+  PROCESSING  // Analysis job running
+  COMPLETED   // Analysis successfully stored
+  PARTIAL     // Some analysis sub-steps failed
+  FAILED      // Analysis failed
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1 models — preserved exactly
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  password    String   // local auth
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  brands      Brand[]
   memberships BrandMember[]
   oauthStates OAuthState[]
 
@@ -57,11 +85,14 @@ model Brand {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  owner            User          @relation(fields: [ownerUserId], references: [id])
-  members          BrandMember[]
-  socialAccounts   SocialAccount[]
-  jobs             Job[]
-  oauthStates      OAuthState[]
+  // Phase 1/2 relations — preserved
+  owner          User            @relation(fields: [ownerUserId], references: [id])
+  members        BrandMember[]
+  socialAccounts SocialAccount[]
+  jobs           Job[]
+  oauthStates    OAuthState[]
+  // Phase 3 addition
+  contents       Content[]
 
   @@map("brands")
 }
@@ -72,112 +103,230 @@ model BrandMember {
   role      String   @default("MEMBER")
   createdAt DateTime @default(now()) @map("created_at")
 
-  brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([brandId, userId])
   @@map("brand_members")
 }
 
 model SocialAccount {
-  id                String   @id @default(uuid())
-  brandId           String   @map("brand_id")
+  id                String    @id @default(uuid())
+  brandId           String    @map("brand_id")
   platform          String
-  externalAccountId String   @map("external_account_id")
+  externalAccountId String    @map("external_account_id")
   username          String
-  accountType       String?  @map("account_type")
-  profileMetadata   Json?    @map("profile_metadata")
-  connectionStatus  String   @default("CONNECTED") @map("connection_status")
-  encryptedToken    String?  @map("encrypted_token")
+  accountType       String?   @map("account_type")
+  profileMetadata   Json?     @map("profile_metadata")
+  connectionStatus  String    @default("CONNECTED") @map("connection_status")
+  encryptedToken    String?   @map("encrypted_token")
   expiry            DateTime?
   lastSync          DateTime? @map("last_sync")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
-  brand             Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  // Phase 1/2 relations — preserved
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  // Phase 3 addition
+  contents Content[]
 
   @@unique([platform, externalAccountId])
   @@map("social_accounts")
 }
 
-model Job {
-  id               String   @id @default(uuid())
-  brandId          String   @map("brand_id")
-  type             JobType
-  state            JobState @default(QUEUED)
-  idempotencyKey   String   @map("idempotency_key")
-  progressPercent  Int      @default(0) @map("progress_percent")
-  progressStep     String?  @map("progress_step")
-  progressMessage  String?  @map("progress_message")
-  input            Json?
-  result           Json?
-  error            Json?
-  attempts         Int      @default(0)
-  startedAt        DateTime? @map("started_at")
-  completedAt      DateTime? @map("completed_at")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 2 models — extended additively for Phase 3
+// ─────────────────────────────────────────────────────────────────────────────
 
-  brand            Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  logs             JobLog[]
-  outbox           JobOutbox?
+model Job {
+  id               String    @id @default(uuid())
+  brandId          String    @map("brand_id")
+  type             JobType
+  state            JobState  @default(QUEUED)
+  idempotencyKey   String    @map("idempotency_key")
+
+  // Progress fields — EXISTING Phase 2 columns, names preserved exactly
+  progressPercent  Int       @default(0)   @map("progress_percent")
+  progressStep     String?   @map("progress_step")    // DO NOT rename
+  progressMessage  String?   @map("progress_message") // DO NOT rename
+
+  input       Json?
+  result      Json?
+  error       Json?
+  attempts    Int       @default(0)
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // ── Phase 3 additions ───────────────────────────────────────────────────────
+  // Parent/child job tree: SYNC_ACCOUNT → IMPORT_CONTENT → FETCH_METRICS
+  parentJobId    String?   @map("parent_job_id")
+  // Rollup counters — populated by syncProgressService (Gate 5)
+  processedCount Int       @default(0) @map("processed_count")
+  totalCount     Int?      @map("total_count")
+  // Retry metadata
+  maxAttempts    Int       @default(3) @map("max_attempts")
+  // Timestamp when job was first delivered to BullMQ queue
+  queuedAt       DateTime? @map("queued_at")
+
+  // ── Relations ───────────────────────────────────────────────────────────────
+  brand  Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  logs   JobLog[]
+  outbox JobOutbox?
+
+  // Self-referencing parent/child relation.
+  // onDelete: SetNull — deleting a parent job does not cascade-delete the tree;
+  // orphaned children retain their records for observability.
+  parent   Job?  @relation("JobChildren", fields: [parentJobId], references: [id], onDelete: SetNull)
+  children Job[] @relation("JobChildren")
 
   @@unique([brandId, idempotencyKey])
+  @@index([parentJobId])
+  @@index([state, type, createdAt])
   @@map("jobs")
 }
 
 model JobLog {
-  id        String   @id @default(uuid())
-  jobId     String   @map("job_id")
+  id        String      @id @default(uuid())
+  jobId     String      @map("job_id")
   level     JobLogLevel @default(INFO)
   event     String
   context   Json?
-  timestamp DateTime @default(now())
+  timestamp DateTime    @default(now())
 
-  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@map("job_logs")
   @@index([jobId, timestamp])
 }
 
 model JobOutbox {
-  id          String   @id @default(uuid())
-  jobId       String   @unique @map("job_id")
+  id          String    @id @default(uuid())
+  jobId       String    @unique @map("job_id")
   deliveredAt DateTime? @map("delivered_at")
   claimedAt   DateTime? @map("claimed_at")
-  attempts    Int      @default(0)
-  lastError   String?  @map("last_error")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  attempts    Int       @default(0)
+  lastError   String?   @map("last_error")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@index([deliveredAt, claimedAt])
   @@map("job_outbox")
 }
 
 model OAuthState {
-  id        String   @id
-  brandId   String   @map("brand_id")
-  userId    String   @map("user_id")
-  expiresAt DateTime @map("expires_at")
+  id        String    @id
+  brandId   String    @map("brand_id")
+  userId    String    @map("user_id")
+  expiresAt DateTime  @map("expires_at")
   usedAt    DateTime? @map("used_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime  @default(now()) @map("created_at")
 
-  brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([brandId, userId])
   @@map("oauth_states")
 }
 
 model OAuthCredential {
-  id             String   @id @default(uuid())
-  encryptedToken String   @map("encrypted_token")
-  expiresAt      DateTime @map("expires_at")
+  id             String    @id @default(uuid())
+  encryptedToken String    @map("encrypted_token")
+  expiresAt      DateTime  @map("expires_at")
   consumedAt     DateTime? @map("consumed_at")
-  createdAt      DateTime @default(now()) @map("created_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
 
   @@index([expiresAt])
   @@map("oauth_credentials")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 3 models
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A single piece of content imported from a connected social account.
+/// Idempotency: @@unique([socialAccountId, externalContentId]) prevents
+/// duplicate imports on repeat sync runs.
+model Content {
+  id                String         @id @default(uuid())
+  brandId           String         @map("brand_id")
+  socialAccountId   String         @map("social_account_id")
+  /// Platform-assigned content ID (e.g. Meta media ID).
+  externalContentId String         @map("external_content_id")
+  type              ContentType
+  caption           String?
+  transcript        String?
+  permalink         String?
+  publishedAt       DateTime?      @map("published_at")
+  /// Raw provider JSON payload — traceability only, not used for product logic.
+  rawPayload        Json?          @map("raw_payload")
+  analysisStatus    AnalysisStatus @default(NOT_STARTED) @map("analysis_status")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  brand           Brand                  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  socialAccount   SocialAccount          @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  media           ContentMedia[]
+  metricSnapshots ContentMetricSnapshot[]
+
+  // One row per (account, external ID) — idempotency for repeat sync
+  @@unique([socialAccountId, externalContentId])
+  // Brand catalogue: newest-first ordering
+  @@index([brandId, publishedAt])
+  // Brand content filtered by analysis state
+  @@index([brandId, analysisStatus])
+  @@map("contents")
+}
+
+/// Media assets for a Content record.
+/// sourceUrl = provider CDN URL (no auth token or credential stored here).
+/// objectKey = future S3 mirror key (populated in a later gate).
+model ContentMedia {
+  id              String   @id @default(uuid())
+  contentId       String   @map("content_id")
+  mediaType       String   @map("media_type")
+  /// Object-storage key (null until asset is mirrored — future gate).
+  objectKey       String?  @map("object_key")
+  /// Provider CDN URL. Must not contain credentials or access tokens.
+  sourceUrl       String?  @map("source_url")
+  sha256          String?
+  width           Int?
+  height          Int?
+  durationSeconds Int?     @map("duration_seconds")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@index([contentId])
+  @@map("content_media")
+}
+
+/// Immutable metric observation recorded at a point in time.
+/// @@unique([contentId, observedAt]) guarantees no overwrite of existing snapshots.
+/// A new sync produces a new observedAt value to create a new historical record.
+model ContentMetricSnapshot {
+  id          String   @id @default(uuid())
+  contentId   String   @map("content_id")
+  /// Observation timestamp — set deterministically by the FETCH_METRICS processor.
+  observedAt  DateTime @map("observed_at")
+  reach       Int?
+  impressions Int?
+  plays       Int?
+  likes       Int?
+  comments    Int?
+  saves       Int?
+  shares      Int?
+  /// Raw provider insights payload — traceability only.
+  rawPayload  Json?    @map("raw_payload")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  // One snapshot per content per observation time — immutability enforced by DB
+  @@unique([contentId, observedAt])
+  @@index([contentId, observedAt])
+  @@map("content_metric_snapshots")
 }
