@@ -11,7 +11,7 @@ const prisma = new PrismaClient();
 console.log('👷 Klarix V2 Worker starting...');
 console.log('🔌 Connecting to Redis:', redactRedisUrl(loadConfig().redisUrl));
 
-const worker = new Worker('klarix-jobs', async job => {
+const worker = new Worker('klarix-sync', async job => {
   const { jobId, brandId, input } = job.data;
 
   console.log(`[Worker] Received job ${job.id} for brand ${brandId}`);

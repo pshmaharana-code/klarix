@@ -2,7 +2,26 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 import { jobsQueue } from './queue.js';
 
-async function createAndEnqueueJob({ brandId, type, idempotencyKey, input = {} }) {
+async function createAndEnqueueJob({ brandId, type, idempotencyKey, input = {}, parentJobId = null }) {
+  if (parentJobId) {
+    const parent = await prisma.job.findUnique({ where: { id: parentJobId } });
+    if (!parent || parent.brandId !== brandId) {
+      const err = new Error('Parent job not found or belongs to a different brand');
+      err.code = 'INVALID_PARENT';
+      throw err;
+    }
+    if (type === 'IMPORT_CONTENT' && parent.type !== 'SYNC_ACCOUNT') {
+      const err = new Error('IMPORT_CONTENT must be a child of SYNC_ACCOUNT');
+      err.code = 'INVALID_HIERARCHY';
+      throw err;
+    }
+    if (type === 'FETCH_METRICS' && parent.type !== 'IMPORT_CONTENT') {
+      const err = new Error('FETCH_METRICS must be a child of IMPORT_CONTENT');
+      err.code = 'INVALID_HIERARCHY';
+      throw err;
+    }
+  }
+
   // The job and its outbox message are committed atomically. Redis publication is
   // deliberately asynchronous so an outage cannot lose an accepted job.
   let job;
@@ -12,6 +31,7 @@ async function createAndEnqueueJob({ brandId, type, idempotencyKey, input = {} }
         brandId,
         type,
         idempotencyKey,
+        parentJobId,
         state: 'CREATED',
         input,
         progressPercent: 0,
@@ -21,7 +41,7 @@ async function createAndEnqueueJob({ brandId, type, idempotencyKey, input = {} }
           create: {
             event: 'JOB_CREATED',
             level: 'INFO',
-            context: { idempotencyKey }
+            context: { idempotencyKey, parentJobId }
           }
         },
         outbox: { create: {} }
@@ -76,6 +96,21 @@ async function getJob(brandId, jobId) {
   });
 }
 
+async function getJobWithChildren(brandId, jobId) {
+  const job = await prisma.job.findFirst({
+    where: { id: jobId, brandId },
+    include: {
+      children: {
+        include: {
+          children: true
+        }
+      }
+    }
+  });
+  if (!job) return null;
+  return job;
+}
+
 // Atomically cancel a job that is still waiting (CREATED or QUEUED).
 // Returns the updated job record on success, or null if the job could
 // not be cancelled (wrong state, wrong brand, or doesn't exist).
@@ -102,6 +137,7 @@ async function cancelJob(brandId, jobId) {
 export {
   createAndEnqueueJob,
   getJob,
+  getJobWithChildren,
   cancelJob,
   dispatchOutboxBatch
 };

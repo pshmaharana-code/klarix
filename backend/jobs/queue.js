@@ -8,7 +8,7 @@ const connection = {
 };
 
 // Create the main jobs queue
-const jobsQueue = new Queue('klarix-jobs', {
+const jobsQueue = new Queue('klarix-sync', {
   connection,
   defaultJobOptions: {
     attempts: 3,

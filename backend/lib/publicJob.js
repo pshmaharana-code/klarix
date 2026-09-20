@@ -15,17 +15,22 @@ export function toPublicJob(job) {
 
   return {
     id: job.id,
+    parentJobId: job.parentJobId ?? null,
     type: job.type,
     state: job.state,
     progressPercent: job.progressPercent,
     progressStep: job.progressStep,
     progressMessage: job.progressMessage,
+    processedCount: job.processedCount ?? 0,
+    totalCount: job.totalCount ?? null,
     result: job.result,
     error: errorCode ? { code: errorCode } : null,
     attempts: job.attempts,
     startedAt: job.startedAt,
     completedAt: job.completedAt,
+    queuedAt: job.queuedAt ?? null,
     createdAt: job.createdAt,
-    updatedAt: job.updatedAt
+    updatedAt: job.updatedAt,
+    children: Array.isArray(job.children) ? job.children.map(toPublicJob) : undefined
   };
 }
