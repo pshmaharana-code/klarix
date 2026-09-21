@@ -15,8 +15,13 @@
         >
           Dashboard
         </router-link>
-        <!-- Placeholders for future phases -->
-        <a href="#" class="block px-4 py-2 rounded-lg text-gray-400 hover:text-gray-300 transition-colors pointer-events-none opacity-50">Content</a>
+        <router-link 
+          to="/content" 
+          class="block px-4 py-2 rounded-lg transition-colors hover:bg-gray-800"
+          active-class="bg-gray-800 text-white font-medium"
+        >
+          Content
+        </router-link>
         <a href="#" class="block px-4 py-2 rounded-lg text-gray-400 hover:text-gray-300 transition-colors pointer-events-none opacity-50">Analytics</a>
         <a href="#" class="block px-4 py-2 rounded-lg text-gray-400 hover:text-gray-300 transition-colors pointer-events-none opacity-50">Patterns</a>
         <a href="#" class="block px-4 py-2 rounded-lg text-gray-400 hover:text-gray-300 transition-colors pointer-events-none opacity-50">Strategy</a>

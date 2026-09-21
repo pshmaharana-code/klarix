@@ -41,6 +41,18 @@ const routes = [
     name: 'Connect',
     component: Connect,
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/content',
+    name: 'ContentCatalogue',
+    component: () => import('./views/ContentCatalogue.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/content/:contentId',
+    name: 'ContentDetail',
+    component: () => import('./views/ContentDetail.vue'),
+    meta: { requiresAuth: true }
   }
 ]
 
