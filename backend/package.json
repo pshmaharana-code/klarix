@@ -13,7 +13,8 @@
     "test:security": "node --experimental-test-module-mocks --test test/v2-phase2-security.test.js test/v2-cancel.test.js",
     "test:gate2": "node --experimental-test-module-mocks --test test/v2-phase3-gate2.test.js",
     "test:gate3": "node --experimental-test-module-mocks --test test/v2-phase3-gate3.test.js",
-    "test:all": "npm test && npm run test:security && npm run test:gate2 && npm run test:gate3",
+    "test:gate4": "node --experimental-test-module-mocks --test test/v2-phase3-gate4.test.js",
+    "test:all": "npm test && npm run test:security && npm run test:gate2 && npm run test:gate3 && npm run test:gate4",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev"
   },
