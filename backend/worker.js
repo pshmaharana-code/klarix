@@ -130,7 +130,7 @@ const worker = new Worker('klarix-sync', async job => {
           brandId,
           type: 'IMPORT_CONTENT',
           parentJobId: jobId,
-          idempotencyKey: `import:${existingAccount.id}:${item.externalContentId}`,
+          idempotencyKey: `import:${existingAccount.id}:${item.externalContentId}:${jobId}`,
           input: { socialAccountId: existingAccount.id, externalContentId: item.externalContentId, item }
         });
         if (child.parentJobId === jobId) newImports++;
@@ -145,7 +145,6 @@ const worker = new Worker('klarix-sync', async job => {
         } 
       });
 
-      await prisma.oAuthCredential.delete({ where: { id: credential.id } });
       await updateSyncProgress(jobId);
       return { success: true, username: profile.username, itemsCount: items.length };
       
