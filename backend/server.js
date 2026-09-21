@@ -14,6 +14,7 @@ import authRouter from './routes/v2/auth.js'
 import brandsRouter from './routes/v2/brands.js'
 import connectionsRouter from './routes/v2/connections.js'
 import jobsRouter from './routes/v2/jobs.js'
+import { brandContentRouter, globalContentRouter } from './routes/v2/content.js'
 import { requireAuth } from './middleware/auth.js'
 
 dotenv.config()
@@ -39,6 +40,8 @@ app.use('/api/v2/auth', authRouter)
 app.use('/api/v2/brands', brandsRouter)
 app.use('/api/v2/brands/:brandId', requireAuth, connectionsRouter)
 app.use('/api/v2/brands/:brandId/jobs', requireAuth, jobsRouter)
+app.use('/api/v2/brands/:brandId/content', requireAuth, brandContentRouter)
+app.use('/api/v2/content', requireAuth, globalContentRouter)
 
 // Configure Multer in-memory upload handler (up to 60MB for video content)
 const upload = multer({
