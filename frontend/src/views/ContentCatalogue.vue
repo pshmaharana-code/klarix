@@ -136,7 +136,7 @@ const fetchContent = async (isLoadMore = false) => {
       }
     }
 
-    const res = await fetch(`http://localhost:3001/api/v2/brands/${authStore.activeBrand.id}/content?${params.toString()}`, {
+    const res = await fetch(`/api/v2/brands/${authStore.activeBrand.id}/content?${params.toString()}`, {
       credentials: 'include'
     });
     
@@ -175,7 +175,11 @@ const loadMore = () => {
 
 const getThumbnail = (item) => {
   if (!item.media || item.media.length === 0) return null;
-  return item.media[0].sourceUrl;
+  const media = item.media[0];
+  if (item.type === 'VIDEO' || item.type === 'REEL') {
+    return media.thumbnailUrl || null;
+  }
+  return media.thumbnailUrl || media.sourceUrl;
 };
 
 const getLatestMetrics = (item) => {

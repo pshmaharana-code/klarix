@@ -1,10 +1,15 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
-import { brandContentRouter, globalContentRouter } from '../routes/v2/content.js';
-import { requireBrandAccess } from '../middleware/brandContext.js';
-import { upsertContent } from '../repositories/contentRepository.js';
+process.env.NODE_ENV = 'test';
+process.env.DATABASE_URL = 'postgresql://postgres:postgres@localhost:5432/klarix_test?schema=public';
+process.env.JWT_SECRET = 'a-test-secret-that-is-long-enough-for-production';
+process.env.META_ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
+const { PrismaClient } = await import('@prisma/client');
+const { brandContentRouter, globalContentRouter } = await import('../routes/v2/content.js');
+const { requireBrandAccess } = await import('../middleware/brandContext.js');
+const { upsertContent } = await import('../repositories/contentRepository.js');
 
 const prisma = new PrismaClient();
 const app = express();
@@ -87,7 +92,7 @@ test('Gate 5: Content API', async (t) => {
 
   // Add media and metrics
   const media = await prisma.contentMedia.create({
-    data: { contentId: c1.id, mediaType: 'VIDEO', sourceUrl: 'http://video.url' }
+    data: { contentId: c1.id, mediaType: 'VIDEO', sourceUrl: 'http://video.url', thumbnailUrl: 'http://thumb.jpg' }
   });
 
   const snap1 = await prisma.contentMetricSnapshot.create({
@@ -108,6 +113,10 @@ test('Gate 5: Content API', async (t) => {
     // Order should be publishedAt DESC
     assert.equal(body.data[0].id, c2.id); // newer
     assert.equal(body.data[1].id, c1.id); // older
+    
+    // Check media field
+    assert.ok(body.data[1].media);
+    assert.equal(body.data[1].media[0].thumbnailUrl, 'http://thumb.jpg');
     
     // Security checks
     assert.equal('rawPayload' in body.data[0], false, 'Do not leak raw payload');

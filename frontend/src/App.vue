@@ -9,17 +9,7 @@ const authStore = useAuthStore()
 const isV2App = computed(() => route.meta.requiresAuth)
 
 onMounted(async () => {
-  try {
-    const res = await fetch('http://localhost:3001/api/v2/auth/session', {credentials: 'include'});
-    if (res.ok) {
-      const { data } = await res.json();
-      authStore.setUser(data.user);
-    }
-  } catch(e) {
-    // Ignore network errors on init
-  } finally {
-    authStore.setInitializing(false);
-  }
+  await authStore.checkSession();
 })
 </script>
 

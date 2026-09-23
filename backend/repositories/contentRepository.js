@@ -72,8 +72,9 @@ export async function upsertContent({
     throw err;
   }
 
-  // Mutable metadata to update on conflict.  Ownership fields are excluded.
+  // Mutable metadata to update on conflict. Ownership fields are excluded.
   const updateData = {
+    type,
     caption,
     transcript,
     permalink,
@@ -120,9 +121,10 @@ export async function upsertContent({
  * access tokens, or Authorization headers may be present.
  *
  * @param {object} params
- * @param {string}  params.contentId     FK → contents.id
- * @param {string}  params.mediaType     e.g. 'IMAGE', 'VIDEO'
+ * @param {string}  [params.contentId]     FK → contents.id
+ * @param {string}  [params.mediaType]     e.g. 'IMAGE', 'VIDEO'
  * @param {string}  [params.sourceUrl]   Provider CDN URL (no credentials)
+ * @param {string}  [params.thumbnailUrl] Provider CDN thumbnail URL
  * @param {string}  [params.objectKey]   Future S3 key (null in Phase 3)
  * @param {string}  [params.sha256]
  * @param {number}  [params.width]
@@ -134,6 +136,7 @@ export async function upsertMedia({
   contentId,
   mediaType,
   sourceUrl = null,
+  thumbnailUrl = null,
   objectKey = null,
   sha256 = null,
   width = null,
@@ -152,7 +155,16 @@ export async function upsertMedia({
     const existing = await prisma.contentMedia.findFirst({
       where: { contentId, mediaType, sourceUrl },
     });
-    if (existing) return existing;
+    // Backfill or update thumbnailUrl on subsequent syncs
+    if (existing) {
+      if (thumbnailUrl && existing.thumbnailUrl !== thumbnailUrl) {
+        return prisma.contentMedia.update({
+          where: { id: existing.id },
+          data: { thumbnailUrl }
+        });
+      }
+      return existing;
+    }
   }
 
   return prisma.contentMedia.create({
@@ -160,6 +172,7 @@ export async function upsertMedia({
       contentId,
       mediaType,
       sourceUrl,
+      thumbnailUrl,
       objectKey,
       sha256,
       width,

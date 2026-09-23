@@ -26,6 +26,25 @@ export const useAuthStore = defineStore('auth', () => {
     isInitializing.value = value;
   }
 
+  let initPromise = null;
+
+  function checkSession() {
+    if (!initPromise) {
+      initPromise = fetch('/api/v2/auth/session', {credentials: 'include'})
+        .then(async res => {
+          if (res.ok) {
+            const { data } = await res.json();
+            setUser(data.user);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          setInitializing(false);
+        });
+    }
+    return initPromise;
+  }
+
   return {
     user,
     isAuthenticated,
@@ -34,6 +53,7 @@ export const useAuthStore = defineStore('auth', () => {
     setUser,
     setActiveBrand,
     clearAuth,
-    setInitializing
+    setInitializing,
+    checkSession
   };
 });

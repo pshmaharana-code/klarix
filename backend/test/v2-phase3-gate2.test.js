@@ -131,23 +131,24 @@ test('repo: upsertContent returns the same id on repeat call (idempotency)', asy
 
 // ── 3. Mutable metadata can be updated ───────────────────────────────────────
 
-test('repo: upsertContent update clause includes mutable metadata (caption, permalink)', async () => {
+test('repo: upsertContent update clause includes mutable metadata (caption, permalink, type)', async () => {
   resetAllMocks();
 
   db.contentFindUnique.mock.mockImplementationOnce(() => Promise.resolve(null));
   db.contentUpsert.mock.mockImplementationOnce(({ update }) =>
-    Promise.resolve({ id: 'c-1', brandId: 'b-1', caption: update.caption })
+    Promise.resolve({ id: 'c-1', brandId: 'b-1', caption: update.caption, type: update.type })
   );
 
   await repo.upsertContent({
     brandId: 'b-1', socialAccountId: 'sa-1', externalContentId: 'ext-1',
-    type: 'IMAGE', caption: 'Updated caption', permalink: 'https://ig.com/p/abc',
+    type: 'REEL', caption: 'Updated caption', permalink: 'https://ig.com/p/abc',
   });
 
   const upsertArg = db.contentUpsert.mock.calls[0].arguments[0];
-  // update must contain caption and permalink
+  // update must contain caption, permalink, and type
   assert.equal(upsertArg.update.caption, 'Updated caption');
   assert.equal(upsertArg.update.permalink, 'https://ig.com/p/abc');
+  assert.equal(upsertArg.update.type, 'REEL', 'type must be updated on conflict to support backfilling existing records');
   // update must NOT contain brandId (ownership is immutable)
   assert.equal('brandId' in upsertArg.update, false, 'brandId must not be in update payload');
   assert.equal('socialAccountId' in upsertArg.update, false, 'socialAccountId must not be in update payload');
@@ -184,20 +185,22 @@ test('repo: upsertMedia creates a media row with the correct contentId', async (
   resetAllMocks();
 
   db.mediaFindFirst.mock.mockImplementationOnce(() => Promise.resolve(null)); // no existing
-  const expectedMedia = { id: 'm-1', contentId: 'content-abc', mediaType: 'IMAGE', sourceUrl: 'https://cdn.instagram.com/img.jpg' };
+  const expectedMedia = { id: 'm-1', contentId: 'content-abc', mediaType: 'IMAGE', sourceUrl: 'https://cdn.instagram.com/img.jpg', thumbnailUrl: 'https://cdn.instagram.com/thumb.jpg' };
   db.mediaCreate.mock.mockImplementationOnce(() => Promise.resolve(expectedMedia));
 
   const result = await repo.upsertMedia({
     contentId: 'content-abc',
     mediaType: 'IMAGE',
     sourceUrl: 'https://cdn.instagram.com/img.jpg',
+    thumbnailUrl: 'https://cdn.instagram.com/thumb.jpg',
   });
 
   assert.equal(result.contentId, 'content-abc');
   assert.equal(result.mediaType, 'IMAGE');
-  // Verify the create call included contentId
+  // Verify the create call included contentId and thumbnailUrl
   const createArg = db.mediaCreate.mock.calls[0].arguments[0].data;
   assert.equal(createArg.contentId, 'content-abc');
+  assert.equal(createArg.thumbnailUrl, 'https://cdn.instagram.com/thumb.jpg');
 });
 
 // ── 6. Media deduplication: existing (contentId, mediaType, sourceUrl) ────────
@@ -350,8 +353,8 @@ test('repo: findContentByBrand forwards from/to date range to WHERE clause', asy
 
 test('adapter: generateAuthUrl returns a URL containing state and required scopes', () => {
   const url = meta.generateAuthUrl('test-state-abc');
-  assert.ok(url.includes('instagram_basic'), 'must include instagram_basic scope');
-  assert.ok(url.includes('instagram_manage_insights'), 'must include instagram_manage_insights scope');
+  assert.ok(url.includes('instagram_business_basic'), 'must include instagram_business_basic scope');
+  assert.ok(url.includes('instagram_business_manage_insights'), 'must include instagram_business_manage_insights scope');
   assert.ok(url.includes('test-state-abc'), 'state must be in the URL');
   // URL must not expose any token or credential
   assert.ok(!url.includes('access_token'), 'must not contain access_token');
@@ -538,4 +541,44 @@ test('adapter: adapter errors do not contain access_token string', async () => {
       'error message must not contain the access token value'
     );
   }
+});
+
+// ── 22. Normalisation unit tests ──────────────────────────────────────────────
+
+test('adapter: _normaliseMediaItem maps thumbnail_url to thumbnailUrl', () => {
+  const raw = {
+    id: '123',
+    media_type: 'VIDEO',
+    media_url: 'http://video.mp4',
+    thumbnail_url: 'http://thumb.jpg',
+  };
+  const normalised = meta._normaliseMediaItem(raw);
+  assert.equal(normalised.externalContentId, '123');
+  assert.equal(normalised.type, 'VIDEO');
+  assert.equal(normalised.mediaUrl, 'http://video.mp4');
+  assert.equal(normalised.thumbnailUrl, 'http://thumb.jpg');
+});
+
+test('adapter: _normaliseMediaItem correctly classifies REEL and FEED videos', () => {
+  const rawReel = { id: '1', media_type: 'VIDEO', media_product_type: 'REELS' };
+  const rawFeed = { id: '2', media_type: 'VIDEO', media_product_type: 'FEED' };
+  const rawImage = { id: '3', media_type: 'IMAGE' };
+  const rawCarousel = { id: '4', media_type: 'CAROUSEL_ALBUM' };
+
+  assert.equal(meta._normaliseMediaItem(rawReel).type, 'REEL');
+  assert.equal(meta._normaliseMediaItem(rawFeed).type, 'VIDEO');
+  assert.equal(meta._normaliseMediaItem(rawImage).type, 'IMAGE');
+  assert.equal(meta._normaliseMediaItem(rawCarousel).type, 'CAROUSEL');
+});
+
+test('adapter: _normaliseInsights maps views to plays for reels', () => {
+  const insights = [
+    { name: 'reach', values: [{ value: 100 }] },
+    { name: 'views', values: [{ value: 200 }] }, // Modern Meta Graph API uses 'views'
+    { name: 'likes', values: [{ value: 50 }] }
+  ];
+  const normalised = meta._normaliseInsights(insights);
+  assert.equal(normalised.reach, 100);
+  assert.equal(normalised.plays, 200); // views should map to plays
+  assert.equal(normalised.likes, 50);
 });

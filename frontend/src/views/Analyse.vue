@@ -230,7 +230,7 @@ const runAnalysis = async () => {
       }
     }, 7000)
 
-    const response = await fetch('http://localhost:3001/api/analyse', {
+    const response = await fetch('/api/analyse', {
       method: 'POST',
       body: formData
     })

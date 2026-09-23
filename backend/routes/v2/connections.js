@@ -42,7 +42,7 @@ router.post('/sync', requireBrandAccess, async (req, res) => {
     // Exchange immediately after state validation: the authorization code is never
     // written to the durable job or returned by an API.
     const { accessToken, expiresIn } = await metaAdapter.exchangeCodeForToken(code);
-    const credential = await prisma.oauthCredential.create({
+    const credential = await prisma.oAuthCredential.create({
       data: {
         encryptedToken: cryptoLib.encrypt(accessToken),
         expiresAt: new Date(Date.now() + Math.min(expiresIn, 15 * 60) * 1000)

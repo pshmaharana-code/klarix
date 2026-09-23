@@ -50,7 +50,7 @@ const GRAPH_API_VERSION =
   process.env.META_GRAPH_API_VERSION || 'v21.0';
 
 /** Base URL for all Graph API requests. */
-const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
+const GRAPH_BASE = `https://graph.instagram.com/${GRAPH_API_VERSION}`;
 
 // ─── Fixture data (NODE_ENV === 'test' only) ─────────────────────────────────
 
@@ -121,10 +121,10 @@ const FIXTURE_MEDIA_ITEMS = [
 /** Deterministic fixture insights keyed by media ID. */
 const FIXTURE_INSIGHTS = {
   fixture_media_001: { reach: 8500, impressions: 12000, plays: 6200, likes: 430, comments: 28, saves: 155, shares: 67 },
-  fixture_media_002: { reach: 4200, impressions: 5100, plays: null,  likes: 310, comments: 14, saves: 88,  shares: 22 },
-  fixture_media_003: { reach: 3100, impressions: 3900, plays: null,  likes: 210, comments: 9,  saves: 45,  shares: 11 },
+  fixture_media_002: { reach: 4200, impressions: 5100, plays: null, likes: 310, comments: 14, saves: 88, shares: 22 },
+  fixture_media_003: { reach: 3100, impressions: 3900, plays: null, likes: 210, comments: 9, saves: 45, shares: 11 },
   fixture_media_004: { reach: 6700, impressions: 9200, plays: 5100, likes: 520, comments: 41, saves: 199, shares: 83 },
-  fixture_media_005: { reach: 2900, impressions: 3400, plays: null,  likes: 180, comments: 7,  saves: 32,  shares: 9  },
+  fixture_media_005: { reach: 2900, impressions: 3400, plays: null, likes: 180, comments: 7, saves: 32, shares: 9 },
 };
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
@@ -136,8 +136,7 @@ const FIXTURE_INSIGHTS = {
 function assertFixtureModeAllowed() {
   if (process.env.NODE_ENV !== 'test') {
     throw new Error(
-      '[metaAdapter] Fixture mode is only permitted when NODE_ENV=test. ' +
-      'In other environments, provide real META_APP_ID, META_APP_SECRET, and META_REDIRECT_URI.'
+      '[metaAdapter] Fixture mode is only permitted when NODE_ENV=test.'
     );
   }
 }
@@ -198,12 +197,13 @@ async function graphGet(path, accessToken, query = {}) {
  * @returns {string}
  */
 function generateAuthUrl(state) {
-  const redirectUri = encodeURIComponent(`http://localhost:5173/onboarding/connect`);
+  const redirectUri = process.env.META_REDIRECT_URI || 'http://localhost:5173/onboarding/connect';
+
   return (
-    `https://mock.instagram.com/oauth/authorize` +
-    `?client_id=mock_client` +
-    `&redirect_uri=${redirectUri}` +
-    `&scope=instagram_basic,instagram_manage_insights,pages_show_list` +
+    `https://api.instagram.com/oauth/authorize` +
+    `?client_id=${process.env.META_APP_ID || 'mock_client'}` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+    `&scope=instagram_business_basic,instagram_business_manage_insights` +
     `&response_type=code` +
     `&state=${encodeURIComponent(state)}`
   );
@@ -245,13 +245,18 @@ async function exchangeCodeForToken(code) {
   }
 
   // Step 1: exchange code for short-lived token
-  const shortLivedUrl = new URL(`${GRAPH_BASE}/oauth/access_token`);
-  shortLivedUrl.searchParams.set('client_id', appId);
-  shortLivedUrl.searchParams.set('client_secret', appSecret);
-  shortLivedUrl.searchParams.set('redirect_uri', redirectUri);
-  shortLivedUrl.searchParams.set('code', code);
+  const shortLivedUrl = new URL(`https://api.instagram.com/oauth/access_token`);
+  const shortParams = new URLSearchParams();
+  shortParams.append('client_id', appId);
+  shortParams.append('client_secret', appSecret);
+  shortParams.append('grant_type', 'authorization_code');
+  shortParams.append('redirect_uri', redirectUri);
+  shortParams.append('code', code);
 
-  const shortRes = await fetch(shortLivedUrl.toString());
+  const shortRes = await fetch(shortLivedUrl.toString(), {
+    method: 'POST',
+    body: shortParams,
+  });
   const shortJson = await shortRes.json();
   if (!shortRes.ok || shortJson.error) {
     const err = new Error(shortJson.error?.message || 'Token exchange failed');
@@ -260,11 +265,10 @@ async function exchangeCodeForToken(code) {
   }
 
   // Step 2: exchange short-lived token for long-lived token
-  const longLivedUrl = new URL(`${GRAPH_BASE}/oauth/access_token`);
-  longLivedUrl.searchParams.set('grant_type', 'fb_exchange_token');
-  longLivedUrl.searchParams.set('client_id', appId);
+  const longLivedUrl = new URL(`https://graph.instagram.com/access_token`);
+  longLivedUrl.searchParams.set('grant_type', 'ig_exchange_token');
   longLivedUrl.searchParams.set('client_secret', appSecret);
-  longLivedUrl.searchParams.set('fb_exchange_token', shortJson.access_token);
+  longLivedUrl.searchParams.set('access_token', shortJson.access_token);
 
   const longRes = await fetch(longLivedUrl.toString());
   const longJson = await longRes.json();
@@ -389,6 +393,7 @@ async function fetchUserMedia(accessToken, igUserId, { limit = 25, after = null 
     'id',
     'caption',
     'media_type',
+    'media_product_type',
     'permalink',
     'timestamp',
     'thumbnail_url',
@@ -481,7 +486,7 @@ async function fetchMediaDetail(accessToken, mediaId) {
  *   rawPayload: object
  * }>}
  */
-async function fetchMediaInsights(accessToken, mediaId) {
+async function fetchMediaInsights(accessToken, mediaId, mediaType = 'IMAGE') {
   if (process.env.NODE_ENV === 'test') {
     assertFixtureModeAllowed();
 
@@ -500,7 +505,9 @@ async function fetchMediaInsights(accessToken, mediaId) {
   // Production: fetch available metrics
   // Meta returns different metric names depending on media type and API version.
   // We request all we want and gracefully handle missing ones.
-  const REQUESTED_METRICS = 'reach,impressions,plays,likes,comments,saved,shares';
+  const REQUESTED_METRICS = (mediaType === 'VIDEO' || mediaType === 'REEL')
+    ? 'reach,views,likes,comments,saved,shares'
+    : 'reach,views,likes,comments,saved,shares';
 
   const data = await graphGet(`/${mediaId}/insights`, accessToken, {
     metric: REQUESTED_METRICS,
@@ -529,9 +536,14 @@ function _normaliseMediaItem(raw) {
     VIDEO: 'VIDEO',
   };
 
+  let type = typeMap[raw.media_type] || 'OTHER';
+  if (type === 'VIDEO' && raw.media_product_type === 'REELS') {
+    type = 'REEL';
+  }
+
   return {
     externalContentId: raw.id,
-    type: typeMap[raw.media_type] || 'OTHER',
+    type,
     caption: raw.caption || null,
     permalink: raw.permalink || null,
     publishedAt: raw.timestamp ? new Date(raw.timestamp) : null,
@@ -540,10 +552,10 @@ function _normaliseMediaItem(raw) {
     // Children for CAROUSEL_ALBUM
     children: Array.isArray(raw.children?.data)
       ? raw.children.data.map(c => ({
-          externalMediaId: c.id,
-          mediaType: typeMap[c.media_type] || 'OTHER',
-          mediaUrl: c.media_url || null,
-        }))
+        externalMediaId: c.id,
+        mediaType: typeMap[c.media_type] || 'OTHER',
+        mediaUrl: c.media_url || null,
+      }))
       : [],
   };
 }
@@ -556,8 +568,9 @@ function _normaliseMediaItem(raw) {
  * Meta metric name → internal field mappings:
  *   reach         → reach
  *   impressions   → impressions
- *   plays         → plays   (REEL only; older versions use video_views)
+ *   plays         → plays   (REEL only; older versions use video_views, newer use views)
  *   video_views   → plays   (fallback alias)
+ *   views         → plays   (fallback alias)
  *   likes         → likes
  *   comments      → comments
  *   saved         → saves   (Note: Meta uses 'saved' not 'saves')
@@ -575,13 +588,13 @@ function _normaliseInsights(insightsArray) {
   }
 
   return {
-    reach:       _safeInt(lookup.reach),
+    reach: _safeInt(lookup.reach),
     impressions: _safeInt(lookup.impressions),
-    plays:       _safeInt(lookup.plays ?? lookup.video_views),
-    likes:       _safeInt(lookup.likes),
-    comments:    _safeInt(lookup.comments),
-    saves:       _safeInt(lookup.saved),    // Meta uses 'saved'
-    shares:      _safeInt(lookup.shares),
+    plays: _safeInt(lookup.plays ?? lookup.video_views ?? lookup.views),
+    likes: _safeInt(lookup.likes),
+    comments: _safeInt(lookup.comments),
+    saves: _safeInt(lookup.saved),    // Meta uses 'saved'
+    shares: _safeInt(lookup.shares),
     rawPayload,
   };
 }
@@ -609,4 +622,6 @@ export {
   fetchMediaInsights,
   // Exposed for testing internals
   GRAPH_API_VERSION,
+  _normaliseMediaItem,
+  _normaliseInsights,
 };

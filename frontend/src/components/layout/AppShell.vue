@@ -68,7 +68,7 @@ const router = useRouter();
 
 const logout = async () => {
   try {
-    const res = await fetch('http://localhost:3001/api/v2/auth/logout', { method: 'POST' });
+    const res = await fetch('/api/v2/auth/logout', { method: 'POST' });
     if (res.ok) {
       authStore.clearAuth();
       router.push('/login');

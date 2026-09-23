@@ -28,7 +28,7 @@
       <div v-else>
         <JobProgress 
           :jobId="activeJobId" 
-          :brandId="authStore.activeBrand?.id"
+          :brandId="currentBrandId"
           @retry="handleRetry"
           @continue="handleContinue"
         />
@@ -50,6 +50,9 @@ const authStore = useAuthStore()
 const isStarting = ref(false)
 const activeJobId = ref(null)
 
+import { computed } from 'vue'
+const currentBrandId = computed(() => authStore.activeBrand?.id || sessionStorage.getItem('klarix.oauth.brandId'))
+
 // When the component mounts, check if we're returning from the OAuth flow
 onMounted(() => {
   if (route.query.code) {
@@ -64,6 +67,8 @@ const initiateConnection = async () => {
   try {
     const brandId = authStore.activeBrand?.id
     if (!brandId) throw new Error('No brand selected')
+
+    sessionStorage.setItem('klarix.oauth.brandId', brandId)
 
     // Fetch the mock OAuth URL from our backend
     const res = await fetch(`/api/v2/brands/${brandId}/social-accounts/instagram/auth-url`)
@@ -84,7 +89,7 @@ const initiateConnection = async () => {
 
 const startSyncJob = async (oauthCode) => {
   try {
-    const brandId = authStore.activeBrand?.id
+    const brandId = authStore.activeBrand?.id || sessionStorage.getItem('klarix.oauth.brandId')
     if (!brandId) return
 
     const state = route.query.state
@@ -98,7 +103,8 @@ const startSyncJob = async (oauthCode) => {
         idempotencyKey,
         code: oauthCode,
         state
-      })
+      }),
+      credentials: 'include'
     })
 
     const data = await res.json()

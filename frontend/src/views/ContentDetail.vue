@@ -33,8 +33,8 @@
         <!-- Media -->
         <div class="bg-gray-900 rounded-xl overflow-hidden border border-gray-700 aspect-video flex items-center justify-center relative">
           <img 
-            v-if="primaryMedia" 
-            :src="primaryMedia.sourceUrl" 
+            v-if="primaryMedia && primaryMedia.displayUrl" 
+            :src="primaryMedia.displayUrl" 
             alt="Content Media" 
             class="w-full h-full object-cover" 
           />
@@ -144,7 +144,7 @@ const fetchDetail = async () => {
   error.value = null;
 
   try {
-    const res = await fetch(`http://localhost:3001/api/v2/content/${contentId}`, {
+    const res = await fetch(`/api/v2/content/${contentId}`, {
       credentials: 'include'
     });
     
@@ -167,7 +167,12 @@ const fetchDetail = async () => {
 
 const primaryMedia = computed(() => {
   if (content.value && content.value.media && content.value.media.length > 0) {
-    return content.value.media[0];
+    const m = content.value.media[0];
+    const type = content.value.type;
+    return {
+      ...m,
+      displayUrl: (type === 'VIDEO' || type === 'REEL') ? (m.thumbnailUrl || null) : (m.thumbnailUrl || m.sourceUrl)
+    };
   }
   return null;
 });

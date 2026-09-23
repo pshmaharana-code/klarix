@@ -145,6 +145,11 @@ const worker = new Worker('klarix-sync', async job => {
         } 
       });
 
+      await prisma.brand.update({
+        where: { id: brandId },
+        data: { onboardingStatus: 'COMPLETED' }
+      });
+
       await updateSyncProgress(jobId);
       return { success: true, username: profile.username, itemsCount: items.length };
       
@@ -164,7 +169,8 @@ const worker = new Worker('klarix-sync', async job => {
       await contentRepository.upsertMedia({
         contentId: content.id,
         mediaType: item.type,
-        sourceUrl: item.mediaUrl || item.permalink || ''
+        sourceUrl: item.mediaUrl || item.permalink || '',
+        thumbnailUrl: item.thumbnailUrl || null
       });
 
       // Create exactly one FETCH_METRICS child
@@ -201,7 +207,7 @@ const worker = new Worker('klarix-sync', async job => {
       const accessToken = cryptoLib.decrypt(account.encryptedToken);
       if (!accessToken) throw new Error('Cannot decrypt access token');
       
-      const metrics = await metaAdapter.fetchMediaInsights(accessToken, externalContentId, item.media_type);
+      const metrics = await metaAdapter.fetchMediaInsights(accessToken, externalContentId, item.type);
       
       await contentRepository.createMetricSnapshot({
         contentId,

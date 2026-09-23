@@ -292,6 +292,8 @@ model ContentMedia {
   objectKey       String?  @map("object_key")
   /// Provider CDN URL. Must not contain credentials or access tokens.
   sourceUrl       String?  @map("source_url")
+  /// Provider thumbnail CDN URL (especially useful for video/REEL).
+  thumbnailUrl    String?  @map("thumbnail_url")
   sha256          String?
   width           Int?
   height          Int?

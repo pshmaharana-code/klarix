@@ -11,8 +11,20 @@
         <ul class="space-y-2 text-sm text-gray-300">
           <li><strong class="text-gray-500">ID:</strong> {{ authStore.activeBrand.id }}</li>
           <li><strong class="text-gray-500">Positioning:</strong> {{ authStore.activeBrand.positioning || 'None' }}</li>
-          <li><strong class="text-gray-500">Status:</strong> {{ authStore.activeBrand.onboardingStatus }}</li>
+          <li>
+            <strong class="text-gray-500">Status:</strong> 
+            <span :class="{'text-yellow-400': authStore.activeBrand.onboardingStatus === 'PENDING', 'text-green-400': authStore.activeBrand.onboardingStatus === 'COMPLETED'}">
+              {{ authStore.activeBrand.onboardingStatus }}
+            </span>
+          </li>
         </ul>
+        
+        <div v-if="authStore.activeBrand.onboardingStatus === 'PENDING'" class="mt-6 pt-6 border-t border-gray-700">
+          <router-link to="/onboarding/connect" class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+            Connect Social Account
+            <svg class="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+          </router-link>
+        </div>
       </div>
     </div>
     
@@ -51,7 +63,7 @@ const newBrand = ref({ name: '', positioning: '' });
 
 const fetchBrands = async () => {
   try {
-    const res = await fetch('http://localhost:3001/api/v2/brands', {credentials: 'include'});
+    const res = await fetch('/api/v2/brands', {credentials: 'include'});
     if (res.ok) {
       const { data } = await res.json();
       if (data.brands && data.brands.length > 0) {
@@ -68,7 +80,7 @@ const fetchBrands = async () => {
 const createBrand = async () => {
   creating.value = true;
   try {
-    const res = await fetch('http://localhost:3001/api/v2/brands', {
+    const res = await fetch('/api/v2/brands', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newBrand.value),

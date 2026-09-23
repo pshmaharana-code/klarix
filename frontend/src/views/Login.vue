@@ -76,7 +76,7 @@ const handleAuth = async () => {
   const endpoint = isLogin.value ? '/api/v2/auth/login' : '/api/v2/auth/register';
   
   try {
-    const res = await fetch(`http://localhost:3001${endpoint}`, {
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: email.value, password: password.value })

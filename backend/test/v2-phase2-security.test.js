@@ -34,7 +34,7 @@ const mockJobFindFirst = mock.fn(() => Promise.resolve(null));
 await mock.module('@prisma/client', {
   exports: {
     PrismaClient: class MockPrismaClient {
-      oauthState = { updateMany: mockOAuthUpdateMany };
+      oAuthState = { updateMany: mockOAuthUpdateMany };
       job = { findFirst: mockJobFindFirst };
     }
   }

@@ -1,0 +1,1 @@
+import { PrismaClient } from '@prisma/client'; const prisma = new PrismaClient(); prisma.content.findMany({ include: { media: true } }).then(c =, null, 2))).finally(() =; 

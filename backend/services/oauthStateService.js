@@ -6,7 +6,7 @@ const STATE_TTL_MS = 10 * 60 * 1000;
 
 export async function createOAuthState({ brandId, userId }) {
   const id = crypto.randomBytes(32).toString('base64url');
-  await prisma.oauthState.create({
+  await prisma.oAuthState.create({
     data: { id, brandId, userId, expiresAt: new Date(Date.now() + STATE_TTL_MS) }
   });
   return id;
@@ -15,7 +15,7 @@ export async function createOAuthState({ brandId, userId }) {
 export async function consumeOAuthState({ state, brandId, userId }) {
   if (typeof state !== 'string' || state.length < 32) return false;
 
-  const claim = await prisma.oauthState.updateMany({
+  const claim = await prisma.oAuthState.updateMany({
     where: {
       id: state,
       brandId,

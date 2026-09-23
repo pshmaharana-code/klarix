@@ -10,8 +10,8 @@ const prisma = new PrismaClient();
 function sanitizeMedia(media) {
   if (!media) return media;
   if (Array.isArray(media)) return media.map(sanitizeMedia);
-  const { id, type, sourceUrl, width, height, durationMs, createdAt } = media;
-  return { id, type, sourceUrl, width, height, durationMs, createdAt };
+  const { id, type, sourceUrl, thumbnailUrl, width, height, durationMs, createdAt } = media;
+  return { id, type, sourceUrl, thumbnailUrl, width, height, durationMs, createdAt };
 }
 
 function sanitizeMetricSnapshot(snap) {
