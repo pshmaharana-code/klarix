@@ -9,6 +9,7 @@ process.env.DATABASE_URL = 'postgresql://postgres:postgres@localhost:5432/klarix
 process.env.REDIS_URL = 'redis://localhost:6379';
 process.env.JWT_SECRET = 'a-test-secret-that-is-long-enough-for-production';
 process.env.META_ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+process.env.NODE_ENV = 'test';
 
 // Mock BullMQ
 const queuedJobs = [];

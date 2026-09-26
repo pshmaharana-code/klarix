@@ -4,6 +4,7 @@ import { connection } from './jobs/queue.js';
 import { dispatchOutboxBatch, createAndEnqueueJob } from './jobs/jobService.js';
 import { updateSyncProgress } from './jobs/syncProgressService.js';
 import * as contentRepository from './repositories/contentRepository.js';
+import { analyzePost } from './services/postAnalysisOrchestrator.js';
 import * as metaAdapter from './integrations/metaAdapter.js';
 import * as cryptoLib from './lib/crypto.js';
 import { loadConfig, redactRedisUrl } from './lib/config.js';
@@ -124,7 +125,7 @@ const worker = new Worker('klarix-sync', async job => {
       const mediaResponse = await metaAdapter.fetchUserMedia(accessToken, existingAccount.externalAccountId);
       const items = mediaResponse.items || [];
       
-      let newImports = 0;
+      let newChildJobs = 0;
       for (const item of items) {
         const child = await createAndEnqueueJob({
           brandId,
@@ -133,15 +134,26 @@ const worker = new Worker('klarix-sync', async job => {
           idempotencyKey: `import:${existingAccount.id}:${item.externalContentId}:${jobId}`,
           input: { socialAccountId: existingAccount.id, externalContentId: item.externalContentId, item }
         });
-        if (child.parentJobId === jobId) newImports++;
+        if (child.parentJobId === jobId) newChildJobs++;
       }
+
+      // Step F: Fetch Account Metrics Enqueue (Phase 4A)
+      await updateProgress(jobId, 97, 'Enqueuing account metrics', 'Scheduling account-level metric sync...');
+      const metricsJob = await createAndEnqueueJob({
+        brandId,
+        type: 'FETCH_ACCOUNT_METRICS',
+        parentJobId: jobId,
+        idempotencyKey: `account_metrics:${existingAccount.id}:${jobId}`,
+        input: { socialAccountId: existingAccount.id, externalAccountId: existingAccount.externalAccountId, since: input?.since, until: input?.until }
+      });
+      if (metricsJob.parentJobId === jobId) newChildJobs++;
 
       await prisma.job.update({ 
         where: { id: jobId }, 
         data: { 
-          totalCount: newImports,
+          totalCount: newChildJobs,
           result: { username: profile.username },
-          logs: { create: { event: 'SYNC_DISCOVERED', level: 'INFO', context: { count: items.length, newImports } } }
+          logs: { create: { event: 'SYNC_DISCOVERED', level: 'INFO', context: { count: items.length, newChildJobs } } }
         } 
       });
 
@@ -182,12 +194,22 @@ const worker = new Worker('klarix-sync', async job => {
         idempotencyKey: `metrics:${content.id}:${rootJobId}`,
         input: { contentId: content.id, socialAccountId, externalContentId, item }
       });
+      let newChildrenCount = metricsChild.parentJobId === dbJob.id ? 1 : 0;
 
-      const newMetrics = metricsChild.parentJobId === dbJob.id ? 1 : 0;
+      // Phase 4: Create ANALYZE_CONTENT child
+      const analyzeChild = await createAndEnqueueJob({
+        brandId,
+        type: 'ANALYZE_CONTENT',
+        parentJobId: dbJob.id,
+        idempotencyKey: `analyze:${content.id}:${rootJobId}`,
+        input: { contentId: content.id }
+      });
+      if (analyzeChild.parentJobId === dbJob.id) newChildrenCount++;
+
       await prisma.job.update({ 
         where: { id: jobId }, 
         data: { 
-          totalCount: newMetrics,
+          totalCount: newChildrenCount,
           state: 'COMPLETED',
           progressPercent: 100,
           progressStep: 'Complete',
@@ -218,7 +240,11 @@ const worker = new Worker('klarix-sync', async job => {
         likes: metrics.likes,
         comments: metrics.comments,
         saves: metrics.saves,
-        shares: metrics.shares
+        shares: metrics.shares,
+        totalInteractions: metrics.totalInteractions,
+        igReelsAvgWatchTime: metrics.igReelsAvgWatchTime,
+        igReelsVideoViewTotalTime: metrics.igReelsVideoViewTotalTime,
+        reelsSkipRate: metrics.reelsSkipRate
       });
 
       await prisma.job.update({
@@ -236,6 +262,148 @@ const worker = new Worker('klarix-sync', async job => {
         await updateSyncProgress(parentJob.parentJobId);
       }
       return { success: true };
+      
+    } else if (dbJob.type === 'FETCH_ACCOUNT_METRICS') {
+      const { socialAccountId, externalAccountId, since, until } = input;
+      
+      const account = await prisma.socialAccount.findUnique({ where: { id: socialAccountId } });
+      if (!account || account.brandId !== brandId) throw new Error('SocialAccount not found or ownership mismatch');
+      
+      const accessToken = cryptoLib.decrypt(account.encryptedToken);
+      if (!accessToken) throw new Error('Cannot decrypt access token');
+
+      // The configured Phase 4A account metrics (only reach/day for now, but configured to add more later)
+      const configuredMetrics = [
+        { metric: 'reach', period: 'day', breakdown: null },
+        { metric: 'reach', period: 'day', breakdown: 'media_product_type' }
+      ];
+
+      let partialFailure = false;
+      let processedAny = false;
+
+      for (const config of configuredMetrics) {
+        try {
+          const res = await metaAdapter.fetchAccountInsights(accessToken, externalAccountId, {
+            metric: config.metric,
+            period: config.period,
+            breakdown: config.breakdown,
+            since,
+            until
+          });
+
+          if (res.isSupported && Array.isArray(res.data)) {
+            for (const item of res.data) {
+              const breakdownDef = config.breakdown || 'none';
+              for (const val of item.values) {
+                if (val.endTime) {
+                  await contentRepository.upsertSocialAccountMetricSnapshot({
+                    socialAccountId,
+                    metricName: item.metricName,
+                    period: item.period,
+                    endTime: new Date(val.endTime),
+                    breakdownDefinition: breakdownDef,
+                    value: val.value,
+                    breakdowns: item.breakdowns,
+                    rawPayload: item.rawPayload
+                  });
+                  processedAny = true;
+                }
+              }
+            }
+          }
+        } catch (err) {
+          // Log individual failure but don't fail the entire job
+          console.error(`[Worker] Failed fetching account metric ${config.metric} / ${config.period}:`, err.message);
+          partialFailure = true;
+          await prisma.jobLog.create({
+            data: {
+              jobId,
+              event: 'METRIC_FETCH_FAILED',
+              level: 'ERROR',
+              context: { metric: config.metric, code: err.code || 'API_ERROR' }
+            }
+          });
+        }
+      }
+
+      await prisma.job.update({
+        where: { id: jobId },
+        data: {
+          state: partialFailure ? 'PARTIAL' : 'COMPLETED',
+          progressPercent: 100,
+          progressStep: 'Complete',
+          completedAt: new Date(),
+          result: { partialFailure, processedAny }
+        }
+      });
+      
+      const parentJob = await prisma.job.findUnique({ where: { id: dbJob.parentJobId } });
+      if (parentJob) {
+        await updateSyncProgress(dbJob.parentJobId);
+      }
+      return { success: true, partialFailure };
+      
+    } else if (dbJob.type === 'ANALYZE_CONTENT') {
+      const { contentId } = input;
+      
+      const content = await prisma.content.findUnique({
+        where: { id: contentId },
+        include: { 
+          media: true,
+          metricSnapshots: { orderBy: { observedAt: 'desc' }, take: 1 } 
+        }
+      });
+      if (!content || content.brandId !== brandId) {
+        throw new Error('Content not found or ownership mismatch');
+      }
+
+      await prisma.content.update({
+        where: { id: contentId },
+        data: { analysisStatus: 'PROCESSING' }
+      });
+
+      const brand = await prisma.brand.findUnique({ where: { id: brandId } });
+      const metrics = content.metricSnapshots.length > 0 ? content.metricSnapshots[0] : null;
+      // Using thumbnailUrl if available, otherwise sourceUrl. Fallback to null.
+      const mediaPayload = content.media[0] ? (content.media[0].thumbnailUrl || content.media[0].sourceUrl) : null;
+
+      const analysisResult = await analyzePost(brand, content, metrics, mediaPayload);
+
+      await prisma.contentAnalysis.create({
+        data: {
+          contentId,
+          version: analysisResult.version,
+          status: analysisResult.status,
+          visualFindings: analysisResult.visualFindings,
+          contentFindings: analysisResult.contentFindings,
+          perfFindings: analysisResult.perfFindings,
+          confidence: analysisResult.confidence,
+          providerMeta: analysisResult.providerMeta,
+          completedAt: new Date()
+        }
+      });
+
+      await prisma.content.update({
+        where: { id: contentId },
+        data: { analysisStatus: analysisResult.status }
+      });
+
+      await prisma.job.update({
+        where: { id: jobId },
+        data: {
+          state: analysisResult.status === 'COMPLETED' ? 'COMPLETED' : 'PARTIAL',
+          progressPercent: 100,
+          progressStep: 'Complete',
+          completedAt: new Date(),
+          result: { version: analysisResult.version, status: analysisResult.status }
+        }
+      });
+      
+      const parentJob = await prisma.job.findUnique({ where: { id: dbJob.parentJobId } });
+      if (parentJob) {
+        await updateSyncProgress(dbJob.parentJobId);
+      }
+      return { success: true, status: analysisResult.status };
       
     } else {
       throw new Error(`Unknown job type: ${dbJob.type}`);

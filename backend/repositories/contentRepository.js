@@ -224,6 +224,10 @@ export async function createMetricSnapshot({
   comments = null,
   saves = null,
   shares = null,
+  totalInteractions = null,
+  igReelsAvgWatchTime = null,
+  igReelsVideoViewTotalTime = null,
+  reelsSkipRate = null,
   rawPayload = null,
 }) {
   try {
@@ -238,6 +242,10 @@ export async function createMetricSnapshot({
         comments,
         saves,
         shares,
+        totalInteractions,
+        igReelsAvgWatchTime,
+        igReelsVideoViewTotalTime,
+        reelsSkipRate,
         rawPayload,
       },
     });
@@ -249,6 +257,102 @@ export async function createMetricSnapshot({
     }
     throw error;
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// upsertSocialAccountMetricSnapshot
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Upsert an account-level metric snapshot (Phase 4A).
+ * 
+ * Idempotency is strictly based on the composite unique key:
+ * [socialAccountId, metricName, period, endTime, breakdownDefinition]
+ */
+export async function upsertSocialAccountMetricSnapshot({
+  socialAccountId,
+  metricName,
+  period,
+  endTime,
+  breakdownDefinition = 'none',
+  value = null,
+  breakdowns = null,
+  rawPayload = null
+}) {
+  const whereKey = {
+    socialAccountId_metricName_period_endTime_breakdownDefinition: {
+      socialAccountId,
+      metricName,
+      period,
+      endTime,
+      breakdownDefinition
+    }
+  };
+
+  const createData = {
+    socialAccountId,
+    metricName,
+    period,
+    endTime,
+    breakdownDefinition,
+    value,
+    breakdowns,
+    rawPayload
+  };
+
+  const updateData = {
+    value,
+    breakdowns,
+    rawPayload
+  };
+
+  return prisma.socialAccountMetricSnapshot.upsert({
+    where: whereKey,
+    create: createData,
+    update: updateData
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// findAccountMetricSnapshots
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Retrieve account-level metric snapshots (Phase 4A) for social accounts owned by a brand.
+ * 
+ * @param {object} params
+ * @param {string} params.brandId Required ownership boundary
+ * @param {string} [params.period] Filter by period
+ * @param {string} [params.breakdown] Filter by breakdownDefinition
+ * @param {Date} [params.since] Filter by endTime >= since
+ * @param {Date} [params.until] Filter by endTime <= until
+ */
+export async function findAccountMetricSnapshots({
+  brandId,
+  period,
+  breakdown,
+  since,
+  until
+}) {
+  const where = {
+    socialAccount: { brandId }
+  };
+  
+  if (period) where.period = period;
+  if (breakdown) where.breakdownDefinition = breakdown;
+  if (since || until) {
+    where.endTime = {};
+    if (since) where.endTime.gte = since;
+    if (until) where.endTime.lte = until;
+  }
+
+  return prisma.socialAccountMetricSnapshot.findMany({
+    where,
+    orderBy: [
+      { endTime: 'desc' },
+      { metricName: 'asc' }
+    ]
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -325,6 +429,10 @@ export async function findContentByBrand({
         orderBy: { observedAt: 'desc' },
         take: 1, // latest snapshot only for catalogue view
       },
+      analyses: {
+        orderBy: { createdAt: 'desc' },
+        take: 1, // latest analysis only for catalogue view
+      },
     },
   });
 }
@@ -357,6 +465,10 @@ export async function findContentById(contentId) {
       },
       metricSnapshots: {
         orderBy: { observedAt: 'desc' },
+      },
+      analyses: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
       },
     },
   });

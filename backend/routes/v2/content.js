@@ -17,8 +17,15 @@ function sanitizeMedia(media) {
 function sanitizeMetricSnapshot(snap) {
   if (!snap) return snap;
   if (Array.isArray(snap)) return snap.map(sanitizeMetricSnapshot);
-  const { id, observedAt, reach, impressions, plays, likes, comments, saves, shares } = snap;
-  return { id, observedAt, reach, impressions, plays, likes, comments, saves, shares };
+  const { id, observedAt, reach, impressions, plays, likes, comments, saves, shares, totalInteractions, igReelsAvgWatchTime, igReelsVideoViewTotalTime, reelsSkipRate } = snap;
+  return { id, observedAt, reach, impressions, plays, likes, comments, saves, shares, totalInteractions, igReelsAvgWatchTime, igReelsVideoViewTotalTime, reelsSkipRate };
+}
+
+function sanitizeAnalysis(analysis) {
+  if (!analysis) return analysis;
+  if (Array.isArray(analysis)) return analysis.map(sanitizeAnalysis);
+  const { id, version, status, visualFindings, contentFindings, perfFindings, confidence, providerMeta, completedAt, createdAt } = analysis;
+  return { id, version, status, visualFindings, contentFindings, perfFindings, confidence, providerMeta, completedAt, createdAt };
 }
 
 function sanitizeContent(c) {
@@ -31,7 +38,8 @@ function sanitizeContent(c) {
     publishedAt: c.publishedAt,
     analysisStatus: c.analysisStatus,
     media: sanitizeMedia(c.media),
-    metricSnapshots: sanitizeMetricSnapshot(c.metricSnapshots)
+    metricSnapshots: sanitizeMetricSnapshot(c.metricSnapshots),
+    analyses: sanitizeAnalysis(c.analyses)
   };
 }
 

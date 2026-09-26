@@ -1,0 +1,6 @@
+▶ Manual Sync API
+  ✖ Valid manual sync request enqueues job (A & C)
+  ✖ Cannot sync a brand you do not have access to (B)
+  ✖ Cannot sync a social account that belongs to another brand
+  ✖ Duplicate protection (D)
+✖ Manual Sync API (186.3449ms)

@@ -213,4 +213,10 @@ watch(() => authStore.activeBrand, (newBrand) => {
     fetchContent();
   }
 });
+
+watch(() => authStore.lastSyncTimestamp, () => {
+  if (authStore.activeBrand) {
+    fetchContent();
+  }
+});
 </script>

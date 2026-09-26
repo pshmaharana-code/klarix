@@ -120,7 +120,7 @@ const FIXTURE_MEDIA_ITEMS = [
 
 /** Deterministic fixture insights keyed by media ID. */
 const FIXTURE_INSIGHTS = {
-  fixture_media_001: { reach: 8500, impressions: 12000, plays: 6200, likes: 430, comments: 28, saves: 155, shares: 67 },
+  fixture_media_001: { reach: 8500, impressions: 12000, plays: 6200, likes: 430, comments: 28, saves: 155, shares: 67, totalInteractions: 680, igReelsAvgWatchTime: 11000, igReelsVideoViewTotalTime: 68200000, reelsSkipRate: 45.2 },
   fixture_media_002: { reach: 4200, impressions: 5100, plays: null, likes: 310, comments: 14, saves: 88, shares: 22 },
   fixture_media_003: { reach: 3100, impressions: 3900, plays: null, likes: 210, comments: 9, saves: 45, shares: 11 },
   fixture_media_004: { reach: 6700, impressions: 9200, plays: 5100, likes: 520, comments: 41, saves: 199, shares: 83 },
@@ -496,6 +496,8 @@ async function fetchMediaInsights(accessToken, mediaId, mediaType = 'IMAGE') {
       return {
         reach: null, impressions: null, plays: null,
         likes: null, comments: null, saves: null, shares: null,
+        totalInteractions: null, igReelsAvgWatchTime: null,
+        igReelsVideoViewTotalTime: null, reelsSkipRate: null,
         rawPayload: {},
       };
     }
@@ -506,7 +508,7 @@ async function fetchMediaInsights(accessToken, mediaId, mediaType = 'IMAGE') {
   // Meta returns different metric names depending on media type and API version.
   // We request all we want and gracefully handle missing ones.
   const REQUESTED_METRICS = (mediaType === 'VIDEO' || mediaType === 'REEL')
-    ? 'reach,views,likes,comments,saved,shares'
+    ? 'reach,views,likes,comments,saved,shares,total_interactions,ig_reels_avg_watch_time,ig_reels_video_view_total_time,reels_skip_rate'
     : 'reach,views,likes,comments,saved,shares';
 
   const data = await graphGet(`/${mediaId}/insights`, accessToken, {
@@ -520,6 +522,80 @@ async function fetchMediaInsights(accessToken, mediaId, mediaType = 'IMAGE') {
   }
 
   return _normaliseInsights(data.data);
+}
+
+// ─── Phase 4A exports ────────────────────────────────────────────────────────
+
+/**
+ * Fetch account-level insights (Phase 4A).
+ * 
+ * @param {string} accessToken
+ * @param {string} igUserId 
+ * @param {object} params
+ * @param {string} params.metric
+ * @param {string} params.period
+ * @param {string} [params.breakdown]
+ * @param {number|string} [params.since] - Unix timestamp or ISO string
+ * @param {number|string} [params.until] - Unix timestamp or ISO string
+ */
+async function fetchAccountInsights(accessToken, igUserId, { metric, period, breakdown, since, until }) {
+  if (process.env.NODE_ENV === 'test') {
+    assertFixtureModeAllowed();
+    
+    // Simulate Meta error for lifetime reach
+    if (metric === 'reach' && period === 'lifetime') {
+      const err = new Error('An unknown error has occurred.');
+      err.code = 'OAuthException';
+      err.graphErrorCode = 1;
+      throw err;
+    }
+    
+    // Simulate empty success
+    if (metric === 'views' || metric === 'accounts_engaged') {
+      return { data: [], isSupported: true };
+    }
+    
+    // Simulate normal response
+    const mockData = [
+      {
+        name: metric,
+        period: period,
+        title: 'Mock Metric',
+        description: 'Mock Description',
+        id: `${igUserId}/insights/${metric}/${period}`,
+        values: [
+          { value: 100, end_time: '2026-09-24T07:00:00+0000' }
+        ],
+        breakdowns: breakdown ? [
+          {
+            dimension_keys: [breakdown],
+            results: [
+              { dimension_values: ['REELS'], value: 60, end_time: '2026-09-24T07:00:00+0000' },
+              { dimension_values: ['POST'], value: 40, end_time: '2026-09-24T07:00:00+0000' }
+            ]
+          }
+        ] : []
+      }
+    ];
+    
+    return { data: mockData.map(_normaliseAccountInsightsItem), isSupported: true };
+  }
+
+  const query = { metric, period };
+  if (breakdown) query.breakdown = breakdown;
+  if (since) query.since = since;
+  if (until) query.until = until;
+
+  const response = await graphGet(`/${igUserId}/insights`, accessToken, query);
+  
+  if (!response.data || response.data.length === 0) {
+    return { data: [], isSupported: true };
+  }
+  
+  return {
+    data: response.data.map(_normaliseAccountInsightsItem),
+    isSupported: true
+  };
 }
 
 // ─── Normalisation helpers ───────────────────────────────────────────────────
@@ -595,8 +671,60 @@ function _normaliseInsights(insightsArray) {
     comments: _safeInt(lookup.comments),
     saves: _safeInt(lookup.saved),    // Meta uses 'saved'
     shares: _safeInt(lookup.shares),
+    totalInteractions: _safeInt(lookup.total_interactions),
+    igReelsAvgWatchTime: _safeInt(lookup.ig_reels_avg_watch_time),
+    igReelsVideoViewTotalTime: _safeInt(lookup.ig_reels_video_view_total_time),
+    reelsSkipRate: _safeFloat(lookup.reels_skip_rate),
     rawPayload,
   };
+}
+
+/**
+ * Normalise a single account insights item.
+ */
+function _normaliseAccountInsightsItem(item) {
+  const sanitizedMeta = {
+    id: item.id || null,
+    name: item.name || null,
+    period: item.period || null,
+    title: item.title || null,
+    description: item.description || null
+  };
+
+  const values = Array.isArray(item.values) 
+    ? item.values.map(v => ({
+        value: _safeFloat(v.value),
+        endTime: v.end_time || null
+      }))
+    : [];
+
+  const breakdowns = Array.isArray(item.breakdowns)
+    ? item.breakdowns.map(b => ({
+        dimension_keys: b.dimension_keys || [],
+        results: Array.isArray(b.results) ? b.results.map(r => ({
+          dimension_values: r.dimension_values || [],
+          value: _safeFloat(r.value),
+          endTime: r.end_time || null
+        })) : []
+      }))
+    : [];
+
+  return {
+    metricName: item.name,
+    period: item.period,
+    values,
+    breakdowns,
+    rawPayload: sanitizedMeta
+  };
+}
+
+/**
+ * Safely coerce a value to float or null.
+ */
+function _safeFloat(value) {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 /**
@@ -620,8 +748,11 @@ export {
   fetchUserMedia,
   fetchMediaDetail,
   fetchMediaInsights,
+  // Phase 4A — new
+  fetchAccountInsights,
   // Exposed for testing internals
   GRAPH_API_VERSION,
   _normaliseMediaItem,
   _normaliseInsights,
+  _normaliseAccountInsightsItem,
 };

@@ -72,13 +72,68 @@
         </div>
       </div>
 
+      <!-- Post Analysis Section (Phase 4) -->
+      <div v-if="latestAnalysis" class="space-y-4">
+        <h2 class="text-xl font-bold flex items-center justify-between">
+          <span>AI Analysis</span>
+          <span :class="{'text-green-400': latestAnalysis.status === 'COMPLETED', 'text-yellow-400': latestAnalysis.status === 'PARTIAL', 'text-red-400': latestAnalysis.status === 'FAILED'}" class="text-xs font-semibold uppercase px-2 py-1 bg-gray-900 rounded border border-gray-700">
+            {{ latestAnalysis.status }} ({{ (latestAnalysis.confidence * 100).toFixed(0) }}% confidence)
+          </span>
+        </h2>
+        
+        <div v-if="latestAnalysis.status === 'FAILED'" class="bg-gray-800 rounded-xl p-6 text-center border border-gray-700">
+          <p class="text-red-400">Analysis failed to complete.</p>
+        </div>
+        <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <!-- Visual Findings -->
+          <div class="bg-gray-800 rounded-xl p-4 border border-gray-700 flex flex-col space-y-2">
+            <h3 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Visual</h3>
+            <template v-if="latestAnalysis.visualFindings">
+              <p class="text-sm text-gray-400"><strong class="text-gray-200">Format:</strong> {{ latestAnalysis.visualFindings.format_classification || 'N/A' }}</p>
+              <p class="text-sm text-gray-400"><strong class="text-gray-200">Hook:</strong> {{ latestAnalysis.visualFindings.hook_strength || 'N/A' }}</p>
+              <p class="text-sm text-gray-400"><strong class="text-gray-200">Quality:</strong> {{ latestAnalysis.visualFindings.visual_quality || 'N/A' }}</p>
+            </template>
+            <p v-else class="text-sm text-yellow-500 italic">Visual analysis unavailable.</p>
+          </div>
+
+          <!-- Content Findings -->
+          <div class="bg-gray-800 rounded-xl p-4 border border-gray-700 flex flex-col space-y-2">
+            <h3 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Content</h3>
+            <template v-if="latestAnalysis.contentFindings">
+              <p class="text-sm text-gray-400"><strong class="text-gray-200">Themes:</strong> {{ latestAnalysis.contentFindings.themes?.join(', ') || 'N/A' }}</p>
+              <p class="text-sm text-gray-400"><strong class="text-gray-200">Narrative:</strong> {{ latestAnalysis.contentFindings.narrative_structure || 'N/A' }}</p>
+              <p class="text-sm text-gray-400"><strong class="text-gray-200">Audience:</strong> {{ latestAnalysis.contentFindings.audience_signals?.join(', ') || 'N/A' }}</p>
+            </template>
+            <p v-else class="text-sm text-yellow-500 italic">Content analysis unavailable.</p>
+          </div>
+
+          <!-- Performance Findings -->
+          <div class="bg-gray-800 rounded-xl p-4 border border-gray-700 flex flex-col space-y-2">
+            <h3 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Performance Interpretation</h3>
+            <template v-if="latestAnalysis.perfFindings">
+              <p class="text-sm text-gray-400">{{ latestAnalysis.perfFindings.metric_interpretation || 'N/A' }}</p>
+              <div v-if="latestAnalysis.perfFindings.performance_factors?.length">
+                <strong class="text-gray-200 text-sm">Factors:</strong>
+                <ul class="list-disc list-inside text-sm text-gray-400 ml-1">
+                  <li v-for="factor in latestAnalysis.perfFindings.performance_factors" :key="factor">{{ factor }}</li>
+                </ul>
+              </div>
+            </template>
+            <p v-else class="text-sm text-yellow-500 italic">Performance analysis unavailable.</p>
+          </div>
+        </div>
+      </div>
+      <div v-else-if="content.analysisStatus !== 'NOT_STARTED'" class="bg-gray-800 rounded-xl p-6 text-center border border-gray-700 animate-pulse">
+        <p class="text-gray-400">Analysis is {{ content.analysisStatus.toLowerCase() }}...</p>
+      </div>
+
       <!-- Current Metrics -->
       <div v-if="latestMetrics" class="space-y-4">
         <h2 class="text-xl font-bold">Latest Metrics</h2>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div v-for="metric in metricDisplayList" :key="metric.key" class="bg-gray-800 rounded-xl p-4 border border-gray-700">
             <div class="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-1">{{ metric.label }}</div>
-            <div class="text-2xl font-bold">{{ formatNumber(latestMetrics[metric.key]) }}</div>
+            <div class="text-2xl font-bold">{{ metric.format ? metric.format(latestMetrics[metric.key]) : formatNumber(latestMetrics[metric.key]) }}</div>
           </div>
         </div>
         <div class="text-xs text-gray-500 text-right">
@@ -99,10 +154,13 @@
                 <th class="px-4 py-3 font-semibold">Observed At</th>
                 <th class="px-4 py-3 font-semibold">Reach</th>
                 <th class="px-4 py-3 font-semibold">Plays</th>
+                <th class="px-4 py-3 font-semibold">Interactions</th>
                 <th class="px-4 py-3 font-semibold">Likes</th>
                 <th class="px-4 py-3 font-semibold">Comments</th>
                 <th class="px-4 py-3 font-semibold">Shares</th>
                 <th class="px-4 py-3 font-semibold">Saves</th>
+                <th v-if="content.type === 'REEL'" class="px-4 py-3 font-semibold">Avg Watch</th>
+                <th v-if="content.type === 'REEL'" class="px-4 py-3 font-semibold">Skip Rate</th>
               </tr>
             </thead>
             <tbody>
@@ -114,10 +172,13 @@
                 <td class="px-4 py-3 whitespace-nowrap">{{ formatShortDate(snap.observedAt) }}</td>
                 <td class="px-4 py-3">{{ formatNumber(snap.reach) }}</td>
                 <td class="px-4 py-3">{{ formatNumber(snap.plays) }}</td>
+                <td class="px-4 py-3">{{ formatNumber(snap.totalInteractions) }}</td>
                 <td class="px-4 py-3">{{ formatNumber(snap.likes) }}</td>
                 <td class="px-4 py-3">{{ formatNumber(snap.comments) }}</td>
                 <td class="px-4 py-3">{{ formatNumber(snap.shares) }}</td>
                 <td class="px-4 py-3">{{ formatNumber(snap.saves) }}</td>
+                <td v-if="content.type === 'REEL'" class="px-4 py-3 whitespace-nowrap">{{ formatTime(snap.igReelsAvgWatchTime) }}</td>
+                <td v-if="content.type === 'REEL'" class="px-4 py-3 whitespace-nowrap">{{ formatPercentage(snap.reelsSkipRate) }}</td>
               </tr>
             </tbody>
           </table>
@@ -129,10 +190,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue';
-import { useRoute } from 'vue-router';
+import { ref, onMounted, computed, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { useAuthStore } from '../stores/auth';
 
 const route = useRoute();
+const router = useRouter();
+const authStore = useAuthStore();
 const contentId = route.params.contentId;
 
 const content = ref(null);
@@ -184,17 +248,32 @@ const latestMetrics = computed(() => {
   return null;
 });
 
+const latestAnalysis = computed(() => {
+  if (content.value && content.value.analyses && content.value.analyses.length > 0) {
+    return content.value.analyses[0];
+  }
+  return null;
+});
+
 const metricDisplayList = computed(() => {
   if (!latestMetrics.value) return [];
   const items = [
-    { key: 'reach', label: 'Reach' },
-    { key: 'impressions', label: 'Impressions' },
-    { key: 'plays', label: 'Plays' },
-    { key: 'likes', label: 'Likes' },
-    { key: 'comments', label: 'Comments' },
-    { key: 'shares', label: 'Shares' },
-    { key: 'saves', label: 'Saves' },
+    { key: 'reach', label: 'Reach', format: formatNumber },
+    { key: 'impressions', label: 'Impressions', format: formatNumber },
+    { key: 'plays', label: 'Plays', format: formatNumber },
+    { key: 'totalInteractions', label: 'Total Interactions', format: formatNumber },
+    { key: 'likes', label: 'Likes', format: formatNumber },
+    { key: 'comments', label: 'Comments', format: formatNumber },
+    { key: 'shares', label: 'Shares', format: formatNumber },
+    { key: 'saves', label: 'Saves', format: formatNumber },
   ];
+  if (content.value?.type === 'REEL') {
+    items.push(
+      { key: 'igReelsAvgWatchTime', label: 'Average Watch Time', format: formatTime },
+      { key: 'igReelsVideoViewTotalTime', label: 'Total Video View Time', format: formatTime },
+      { key: 'reelsSkipRate', label: 'Skip Rate', format: formatPercentage }
+    );
+  }
   return items.filter(m => latestMetrics.value[m.key] !== null && latestMetrics.value[m.key] !== undefined);
 });
 
@@ -219,7 +298,25 @@ const formatNumber = (num) => {
   return new Intl.NumberFormat().format(num);
 };
 
+const formatTime = (ms) => {
+  if (ms === null || ms === undefined) return '-';
+  const totalSeconds = Math.floor(ms / 1000);
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+};
+
+const formatPercentage = (val) => {
+  if (val === null || val === undefined) return '-';
+  return `${val}%`;
+};
+
 onMounted(() => {
+  fetchDetail();
+});
+
+watch(() => authStore.lastSyncTimestamp, () => {
   fetchDetail();
 });
 </script>

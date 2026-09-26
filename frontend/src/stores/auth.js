@@ -45,15 +45,23 @@ export const useAuthStore = defineStore('auth', () => {
     return initPromise;
   }
 
+  const lastSyncTimestamp = ref(Date.now());
+
+  function triggerSyncUpdate() {
+    lastSyncTimestamp.value = Date.now();
+  }
+
   return {
     user,
     isAuthenticated,
     activeBrand,
     isInitializing,
+    lastSyncTimestamp,
     setUser,
     setActiveBrand,
     clearAuth,
     setInitializing,
-    checkSession
+    checkSession,
+    triggerSyncUpdate
   };
 });

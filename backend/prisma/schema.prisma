@@ -15,24 +15,27 @@ datasource db {
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum JobType {
-  SYNC_ACCOUNT   // Phase 2 — preserved
+  SYNC_ACCOUNT // Phase 2 — preserved
   IMPORT_CONTENT // Phase 3
-  FETCH_METRICS  // Phase 3
+  FETCH_METRICS // Phase 3
+  FETCH_ACCOUNT_METRICS // Phase 4A
+  ANALYZE_CONTENT // Phase 4
+  ANALYZE_BATCH // Phase 4
 }
 
 enum JobState {
-  CREATED        // Phase 2 — preserved
-  QUEUED         // Phase 2 — preserved
-  PROCESSING     // Phase 2 — preserved
-  RETRY_PENDING  // Phase 2 — preserved
-  COMPLETED      // Phase 2 — preserved
-  PARTIAL        // Phase 3 — parent job completed with some child failures
-  FAILED         // Phase 2 — preserved
-  CANCELLED      // Phase 2 — preserved
+  CREATED // Phase 2 — preserved
+  QUEUED // Phase 2 — preserved
+  PROCESSING // Phase 2 — preserved
+  RETRY_PENDING // Phase 2 — preserved
+  COMPLETED // Phase 2 — preserved
+  PARTIAL // Phase 3 — parent job completed with some child failures
+  FAILED // Phase 2 — preserved
+  CANCELLED // Phase 2 — preserved
 }
 
 enum JobLogLevel {
-  INFO  // Phase 2 — preserved
+  INFO // Phase 2 — preserved
   ERROR // Phase 2 — preserved
 }
 
@@ -48,11 +51,11 @@ enum ContentType {
 
 enum AnalysisStatus {
   NOT_STARTED // Default: content imported but not yet queued for analysis
-  QUEUED      // Analysis job created
-  PROCESSING  // Analysis job running
-  COMPLETED   // Analysis successfully stored
-  PARTIAL     // Some analysis sub-steps failed
-  FAILED      // Analysis failed
+  QUEUED // Analysis job created
+  PROCESSING // Analysis job running
+  COMPLETED // Analysis successfully stored
+  PARTIAL // Some analysis sub-steps failed
+  FAILED // Analysis failed
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -60,11 +63,11 @@ enum AnalysisStatus {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model User {
-  id          String   @id @default(uuid())
-  email       String   @unique
-  password    String   // local auth
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String // local auth
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   brands      Brand[]
   memberships BrandMember[]
@@ -126,9 +129,11 @@ model SocialAccount {
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
   // Phase 1/2 relations — preserved
-  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  brand           Brand                         @relation(fields: [brandId], references: [id], onDelete: Cascade)
   // Phase 3 addition
-  contents Content[]
+  contents        Content[]
+  // Phase 4A addition
+  metricSnapshots SocialAccountMetricSnapshot[]
 
   @@unique([platform, externalAccountId])
   @@map("social_accounts")
@@ -139,16 +144,16 @@ model SocialAccount {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Job {
-  id               String    @id @default(uuid())
-  brandId          String    @map("brand_id")
-  type             JobType
-  state            JobState  @default(QUEUED)
-  idempotencyKey   String    @map("idempotency_key")
+  id             String   @id @default(uuid())
+  brandId        String   @map("brand_id")
+  type           JobType
+  state          JobState @default(QUEUED)
+  idempotencyKey String   @map("idempotency_key")
 
   // Progress fields — EXISTING Phase 2 columns, names preserved exactly
-  progressPercent  Int       @default(0)   @map("progress_percent")
-  progressStep     String?   @map("progress_step")    // DO NOT rename
-  progressMessage  String?   @map("progress_message") // DO NOT rename
+  progressPercent Int     @default(0) @map("progress_percent")
+  progressStep    String? @map("progress_step") // DO NOT rename
+  progressMessage String? @map("progress_message") // DO NOT rename
 
   input       Json?
   result      Json?
@@ -171,7 +176,7 @@ model Job {
   queuedAt       DateTime? @map("queued_at")
 
   // ── Relations ───────────────────────────────────────────────────────────────
-  brand  Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  brand  Brand      @relation(fields: [brandId], references: [id], onDelete: Cascade)
   logs   JobLog[]
   outbox JobOutbox?
 
@@ -197,8 +202,8 @@ model JobLog {
 
   job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
-  @@map("job_logs")
   @@index([jobId, timestamp])
+  @@map("job_logs")
 }
 
 model JobOutbox {
@@ -267,10 +272,11 @@ model Content {
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
 
-  brand           Brand                  @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  socialAccount   SocialAccount          @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  brand           Brand                   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  socialAccount   SocialAccount           @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
   media           ContentMedia[]
   metricSnapshots ContentMetricSnapshot[]
+  analyses        ContentAnalysis[]
 
   // One row per (account, external ID) — idempotency for repeat sync
   @@unique([socialAccountId, externalContentId])
@@ -279,6 +285,31 @@ model Content {
   // Brand content filtered by analysis state
   @@index([brandId, analysisStatus])
   @@map("contents")
+}
+
+/// Phase 4: Content Analysis results
+model ContentAnalysis {
+  id              String   @id @default(uuid())
+  contentId       String   @map("content_id")
+  version         String   @default("1.0")
+  status          AnalysisStatus @default(COMPLETED)
+  
+  // Structured results
+  visualFindings  Json?    @map("visual_findings")
+  contentFindings Json?    @map("content_findings")
+  perfFindings    Json?    @map("perf_findings")
+  
+  confidence      Float?
+  providerMeta    Json?    @map("provider_meta")
+  
+  completedAt     DateTime? @map("completed_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  content         Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@index([contentId, version])
+  @@map("content_analyses")
 }
 
 /// Media assets for a Content record.
@@ -310,20 +341,24 @@ model ContentMedia {
 /// @@unique([contentId, observedAt]) guarantees no overwrite of existing snapshots.
 /// A new sync produces a new observedAt value to create a new historical record.
 model ContentMetricSnapshot {
-  id          String   @id @default(uuid())
-  contentId   String   @map("content_id")
+  id                        String   @id @default(uuid())
+  contentId                 String   @map("content_id")
   /// Observation timestamp — set deterministically by the FETCH_METRICS processor.
-  observedAt  DateTime @map("observed_at")
-  reach       Int?
-  impressions Int?
-  plays       Int?
-  likes       Int?
-  comments    Int?
-  saves       Int?
-  shares      Int?
+  observedAt                DateTime @map("observed_at")
+  reach                     Int?
+  impressions               Int?
+  plays                     Int?
+  likes                     Int?
+  comments                  Int?
+  saves                     Int?
+  shares                    Int?
+  totalInteractions         Int?     @map("total_interactions")
+  igReelsAvgWatchTime       Int?     @map("ig_reels_avg_watch_time")
+  igReelsVideoViewTotalTime Int?     @map("ig_reels_video_view_total_time")
+  reelsSkipRate             Float?   @map("reels_skip_rate")
   /// Raw provider insights payload — traceability only.
-  rawPayload  Json?    @map("raw_payload")
-  createdAt   DateTime @default(now()) @map("created_at")
+  rawPayload                Json?    @map("raw_payload")
+  createdAt                 DateTime @default(now()) @map("created_at")
 
   content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
 
@@ -331,4 +366,27 @@ model ContentMetricSnapshot {
   @@unique([contentId, observedAt])
   @@index([contentId, observedAt])
   @@map("content_metric_snapshots")
+}
+
+/// Phase 4A: Account-level metric observations.
+/// Idempotency: @@unique([socialAccountId, metricName, period, endTime, breakdownDefinition])
+/// Updates to historic data replace the value but maintain identity.
+model SocialAccountMetricSnapshot {
+  id                  String   @id @default(uuid())
+  socialAccountId     String   @map("social_account_id")
+  metricName          String   @map("metric_name")
+  period              String
+  endTime             DateTime @map("end_time")
+  breakdownDefinition String   @default("none") @map("breakdown_definition")
+  value               Float?
+  breakdowns          Json?
+  rawPayload          Json?    @map("raw_payload")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  socialAccount SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([socialAccountId, metricName, period, endTime, breakdownDefinition])
+  @@index([socialAccountId, metricName, endTime])
+  @@map("social_account_metric_snapshots")
 }

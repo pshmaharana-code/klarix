@@ -68,4 +68,51 @@ router.post('/sync', requireBrandAccess, async (req, res) => {
   }
 });
 
+// POST /api/v2/brands/:brandId/social-accounts/:socialAccountId/sync
+// Refreshes an existing connection using its stored token
+router.post('/social-accounts/:socialAccountId/sync', requireBrandAccess, async (req, res) => {
+  const { brandId, socialAccountId } = req.params;
+  const { idempotencyKey } = req.body;
+
+  if (!idempotencyKey) {
+    return res.status(400).json({ success: false, error: 'idempotencyKey is required' });
+  }
+
+  try {
+    const account = await prisma.socialAccount.findUnique({
+      where: { id: socialAccountId }
+    });
+
+    if (!account || account.brandId !== brandId) {
+      return res.status(404).json({ success: false, error: 'Social account not found' });
+    }
+
+    // Create a temporary credential for the worker using the stored token
+    const credential = await prisma.oAuthCredential.create({
+      data: {
+        encryptedToken: account.encryptedToken,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000)
+      }
+    });
+
+    const job = await createAndEnqueueJob({
+      brandId,
+      type: 'SYNC_ACCOUNT',
+      idempotencyKey,
+      input: { credentialId: credential.id }
+    });
+
+    res.status(202).json({
+      success: true,
+      data: { job: toPublicJob(job) }
+    });
+  } catch (error) {
+    if (error.message === 'QUEUE_UNAVAILABLE') {
+      return res.status(503).json({ success: false, error: 'Queue service unavailable. Please try again later.' });
+    }
+    console.error('[Manual Sync Route] Error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 export default router;

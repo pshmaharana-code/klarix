@@ -22,7 +22,13 @@
         >
           Content
         </router-link>
-        <a href="#" class="block px-4 py-2 rounded-lg text-gray-400 hover:text-gray-300 transition-colors pointer-events-none opacity-50">Analytics</a>
+        <router-link 
+          to="/analytics" 
+          class="block px-4 py-2 rounded-lg transition-colors hover:bg-gray-800"
+          active-class="bg-gray-800 text-white font-medium"
+        >
+          Analytics
+        </router-link>
         <a href="#" class="block px-4 py-2 rounded-lg text-gray-400 hover:text-gray-300 transition-colors pointer-events-none opacity-50">Patterns</a>
         <a href="#" class="block px-4 py-2 rounded-lg text-gray-400 hover:text-gray-300 transition-colors pointer-events-none opacity-50">Strategy</a>
       </nav>

@@ -468,6 +468,10 @@ test('adapter: fetchMediaInsights fixture returns normalised metrics', async () 
   assert.equal(metrics.comments, 28);
   assert.equal(metrics.saves, 155);
   assert.equal(metrics.shares, 67);
+  assert.equal(metrics.totalInteractions, 680);
+  assert.equal(metrics.igReelsAvgWatchTime, 11000);
+  assert.equal(metrics.igReelsVideoViewTotalTime, 68200000);
+  assert.equal(metrics.reelsSkipRate, 45.2);
   assert.ok(typeof metrics.rawPayload === 'object', 'rawPayload must be present');
 });
 
@@ -478,6 +482,8 @@ test('adapter: fetchMediaInsights fixture returns null metrics for unknown media
   assert.equal(metrics.impressions, null);
   assert.equal(metrics.plays, null);
   assert.equal(metrics.saves, null);
+  assert.equal(metrics.totalInteractions, null);
+  assert.equal(metrics.reelsSkipRate, null);
 });
 
 test('adapter: fetchMediaInsights fixture IMAGE returns null plays (not a video metric)', async () => {

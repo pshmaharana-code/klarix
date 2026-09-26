@@ -37,6 +37,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/analytics',
+    name: 'AccountAnalytics',
+    component: () => import('./views/AccountAnalytics.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/onboarding/connect',
     name: 'Connect',
     component: Connect,

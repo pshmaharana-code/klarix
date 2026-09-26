@@ -12,6 +12,6 @@ export default defineConfig({
         changeOrigin: true
       }
     },
-    allowedHosts: ['tourism-ruby-reaching-listings.trycloudflare.com']
+    allowedHosts: ['yearly-phantom-drugs-castle.trycloudflare.com']
   }
 })
