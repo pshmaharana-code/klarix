@@ -9,7 +9,6 @@
       <div class="mt-8 p-6 bg-gray-800 rounded-xl border border-gray-700">
         <h3 class="text-lg font-medium text-white mb-4">Brand Details</h3>
         <ul class="space-y-2 text-sm text-gray-300">
-          <li><strong class="text-gray-500">ID:</strong> {{ authStore.activeBrand.id }}</li>
           <li><strong class="text-gray-500">Positioning:</strong> {{ authStore.activeBrand.positioning || 'None' }}</li>
           <li>
             <strong class="text-gray-500">Status:</strong> 

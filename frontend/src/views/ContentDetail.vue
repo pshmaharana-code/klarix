@@ -84,7 +84,18 @@
         <div v-if="latestAnalysis.status === 'FAILED'" class="bg-gray-800 rounded-xl p-6 text-center border border-gray-700">
           <p class="text-red-400">Analysis failed to complete.</p>
         </div>
-        <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div v-else>
+          <div v-if="latestAnalysis.status === 'PARTIAL' && latestAnalysis.providerMeta?.error" class="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-3 mb-4 flex items-start space-x-3 text-yellow-500 text-sm">
+            <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div>
+              <strong class="text-yellow-400">Analysis incomplete.</strong> The AI provider experienced a temporary issue analyzing some media.
+              <div class="text-xs text-yellow-600/80 mt-1 font-mono break-words">{{ latestAnalysis.providerMeta.error }}</div>
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <!-- Visual Findings -->
           <div class="bg-gray-800 rounded-xl p-4 border border-gray-700 flex flex-col space-y-2">
             <h3 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Visual</h3>
@@ -109,7 +120,12 @@
 
           <!-- Performance Findings -->
           <div class="bg-gray-800 rounded-xl p-4 border border-gray-700 flex flex-col space-y-2">
-            <h3 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Performance Interpretation</h3>
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Performance Interpretation</h3>
+              <span v-if="latestAnalysis.providerMeta?.metricsObservedAt" class="text-[10px] text-gray-500 font-medium px-2 py-0.5 bg-gray-900 rounded border border-gray-700">
+                Data from: {{ formatShortDate(latestAnalysis.providerMeta.metricsObservedAt) }}
+              </span>
+            </div>
             <template v-if="latestAnalysis.perfFindings">
               <p class="text-sm text-gray-400">{{ latestAnalysis.perfFindings.metric_interpretation || 'N/A' }}</p>
               <div v-if="latestAnalysis.perfFindings.performance_factors?.length">
@@ -120,6 +136,7 @@
               </div>
             </template>
             <p v-else class="text-sm text-yellow-500 italic">Performance analysis unavailable.</p>
+          </div>
           </div>
         </div>
       </div>

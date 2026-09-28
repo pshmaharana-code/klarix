@@ -691,23 +691,30 @@ function _normaliseAccountInsightsItem(item) {
     description: item.description || null
   };
 
-  const values = Array.isArray(item.values) 
-    ? item.values.map(v => ({
-        value: _safeFloat(v.value),
-        endTime: v.end_time || null
-      }))
-    : [];
+  let values = [];
+  if (Array.isArray(item.values)) {
+    values = item.values.map(v => ({
+      value: _safeFloat(v.value),
+      endTime: v.end_time || null
+    }));
+  } else if (item.total_value) {
+    values = [{
+      value: _safeFloat(item.total_value.value),
+      endTime: item.total_value.end_time || null
+    }];
+  }
 
-  const breakdowns = Array.isArray(item.breakdowns)
-    ? item.breakdowns.map(b => ({
-        dimension_keys: b.dimension_keys || [],
-        results: Array.isArray(b.results) ? b.results.map(r => ({
-          dimension_values: r.dimension_values || [],
-          value: _safeFloat(r.value),
-          endTime: r.end_time || null
-        })) : []
-      }))
-    : [];
+  const rawBreakdowns = Array.isArray(item.breakdowns) ? item.breakdowns : 
+                        (item.total_value && Array.isArray(item.total_value.breakdowns) ? item.total_value.breakdowns : []);
+
+  const breakdowns = rawBreakdowns.map(b => ({
+      dimension_keys: b.dimension_keys || [],
+      results: Array.isArray(b.results) ? b.results.map(r => ({
+        dimension_values: r.dimension_values || [],
+        value: _safeFloat(r.value),
+        endTime: r.end_time || null
+      })) : []
+    }));
 
   return {
     metricName: item.name,

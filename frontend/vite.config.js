@@ -12,6 +12,6 @@ export default defineConfig({
         changeOrigin: true
       }
     },
-    allowedHosts: ['yearly-phantom-drugs-castle.trycloudflare.com']
+    allowedHosts: ['causing-has-workstation-ist.trycloudflare.com']
   }
 })

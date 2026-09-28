@@ -141,4 +141,50 @@ globalContentRouter.get('/:contentId', async (req, res) => {
   }
 });
 
+import { createAndEnqueueJob } from '../../jobs/jobService.js';
+
+// POST /api/v2/content/:contentId/analyze
+globalContentRouter.post('/:contentId/analyze', async (req, res) => {
+  try {
+    const { contentId } = req.params;
+    
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'UNAUTHENTICATED', message: 'Must be authenticated' });
+    }
+
+    const content = await contentRepository.findContentById(contentId);
+    if (!content) {
+      return res.status(404).json({ success: false, error: 'NOT_FOUND', message: 'Content not found' });
+    }
+    
+    const brand = await prisma.brand.findFirst({
+      where: {
+        id: content.brandId,
+        OR: [
+          { ownerUserId: req.user.id },
+          { members: { some: { userId: req.user.id } } }
+        ]
+      }
+    });
+
+    if (!brand) {
+      return res.status(404).json({ success: false, error: 'NOT_FOUND', message: 'Content not found' });
+    }
+
+    // Reuse existing analysis job flow and idempotency rules
+    const job = await createAndEnqueueJob({
+      brandId: brand.id,
+      type: 'ANALYZE_CONTENT',
+      parentJobId: null, // manual invocation has no parent
+      idempotencyKey: `analyze:${content.id}:1.0`,
+      input: { contentId: content.id }
+    });
+
+    return res.json({ success: true, data: { jobId: job.id, status: job.state } });
+  } catch (error) {
+    console.error('[Klarix API] Enqueue analysis error:', error);
+    return res.status(500).json({ success: false, error: 'INTERNAL_ERROR', message: 'Error enqueuing analysis' });
+  }
+});
+
 export { brandContentRouter, globalContentRouter };

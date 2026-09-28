@@ -37,6 +37,21 @@ await mock.module('bullmq', {
 const prisma = new PrismaClient();
 const { createAndEnqueueJob, cancelJob, dispatchOutboxBatch } = await import('../jobs/jobService.js');
 const cryptoLib = await import('../lib/crypto.js');
+
+mock.module('../services/postAnalysisOrchestrator.js', {
+  namedExports: {
+    analyzePost: async () => ({
+      version: '1.0',
+      status: 'COMPLETED',
+      visualFindings: { format_classification: 'mocked' },
+      contentFindings: { themes: ['mocked'] },
+      perfFindings: { metric_interpretation: 'mocked' },
+      confidence: 1.0,
+      providerMeta: { model: 'mocked' }
+    })
+  }
+});
+
 await import('../worker.js'); // Triggers worker setup
 
 // Clean database
@@ -119,6 +134,10 @@ test('Gate 4 E2E Corrections', async (t) => {
     assert.ok(rootProgressDuringMetrics < 100, 'Root progress must not be 100% while descendants are active');
 
     const rootJobAfter1 = await prisma.job.findUnique({ where: { id: syncJob1.id } });
+    if (rootJobAfter1.state !== 'COMPLETED') {
+      const allJobs = await prisma.job.findMany({ select: { id: true, type: true, state: true, parentJobId: true, error: true }});
+      console.log('--- STUCK JOBS DUMP ---', JSON.stringify(allJobs, null, 2));
+    }
     assert.equal(rootJobAfter1.state, 'COMPLETED', 'Root must become COMPLETED after all descendants finish');
     assert.equal(rootJobAfter1.progressPercent, 100, 'Root progress must reach 100% after all descendants finish');
 

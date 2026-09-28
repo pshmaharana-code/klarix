@@ -34,6 +34,7 @@ const db = {
   contentFindMany:   mock.fn(() => Promise.resolve([])),
   mediaFindFirst:    mock.fn(() => Promise.resolve(null)),
   mediaCreate:       mock.fn(({ data }) => Promise.resolve({ id: 'media-1', ...data })),
+  mediaUpdate:       mock.fn(({ data }) => Promise.resolve({ id: 'media-1', ...data })),
   snapshotCreate:    mock.fn(({ data }) => Promise.resolve({ id: 'snap-1', ...data })),
 };
 
@@ -48,6 +49,7 @@ await mock.module('@prisma/client', {
       contentMedia = {
         findFirst: db.mediaFindFirst,
         create:    db.mediaCreate,
+        update:    db.mediaUpdate,
       };
       contentMetricSnapshot = {
         create: db.snapshotCreate,
@@ -205,18 +207,21 @@ test('repo: upsertMedia creates a media row with the correct contentId', async (
 
 // ── 6. Media deduplication: existing (contentId, mediaType, sourceUrl) ────────
 
-test('repo: upsertMedia returns existing row when same (contentId, mediaType, sourceUrl) already exists', async () => {
+test('repo: upsertMedia updates existing row when contentId matches', async () => {
   resetAllMocks();
 
-  const existingMedia = { id: 'm-existing', contentId: 'c-1', mediaType: 'IMAGE', sourceUrl: 'https://cdn.ig.com/x.jpg' };
+  const existingMedia = { id: 'm-existing', contentId: 'c-1', mediaType: 'IMAGE', sourceUrl: 'https://cdn.ig.com/old.jpg' };
   db.mediaFindFirst.mock.mockImplementationOnce(() => Promise.resolve(existingMedia));
+  const updatedMedia = { ...existingMedia, sourceUrl: 'https://cdn.ig.com/new.jpg' };
+  db.mediaUpdate.mock.mockImplementationOnce(() => Promise.resolve(updatedMedia));
 
   const result = await repo.upsertMedia({
-    contentId: 'c-1', mediaType: 'IMAGE', sourceUrl: 'https://cdn.ig.com/x.jpg',
+    contentId: 'c-1', mediaType: 'IMAGE', sourceUrl: 'https://cdn.ig.com/new.jpg',
   });
 
   assert.equal(result.id, 'm-existing', 'must return existing row, not create a new one');
   assert.equal(db.mediaCreate.mock.callCount(), 0, 'create must not be called when media already exists');
+  assert.equal(db.mediaUpdate.mock.callCount(), 1, 'update must be called to refresh URLs');
 });
 
 // ── 7. Metric snapshot creation succeeds ─────────────────────────────────────

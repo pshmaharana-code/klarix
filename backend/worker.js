@@ -178,12 +178,30 @@ const worker = new Worker('klarix-sync', async job => {
         caption: item.caption || null
       });
 
-      await contentRepository.upsertMedia({
-        contentId: content.id,
-        mediaType: item.type,
-        sourceUrl: item.mediaUrl || item.permalink || '',
-        thumbnailUrl: item.thumbnailUrl || null
-      });
+      if (item.type === 'CAROUSEL' && Array.isArray(item.children) && item.children.length > 0) {
+        // Validate children before modifying database
+        const validChildren = item.children.filter(child => child && child.mediaUrl);
+        
+        if (validChildren.length === 0) {
+          console.warn(`[IMPORT_CONTENT] Carousel ${content.id} has no valid children with mediaUrl. Keeping existing media rows.`);
+        } else {
+          if (validChildren.length < item.children.length) {
+            console.warn(`[IMPORT_CONTENT] Carousel ${content.id} contains some missing mediaUrls. Only persisting ${validChildren.length} valid slides.`);
+          }
+          await contentRepository.replaceCarouselMedia({
+            contentId: content.id,
+            validChildren
+          });
+        }
+      } else {
+        // Single-image, Reel, or fallback: persist root media item as before.
+        await contentRepository.upsertMedia({
+          contentId: content.id,
+          mediaType: item.type,
+          sourceUrl: item.mediaUrl || item.permalink || '',
+          thumbnailUrl: item.thumbnailUrl || null
+        });
+      }
 
       // Create exactly one FETCH_METRICS child
       const rootJobId = dbJob.parentJobId;
@@ -201,7 +219,7 @@ const worker = new Worker('klarix-sync', async job => {
         brandId,
         type: 'ANALYZE_CONTENT',
         parentJobId: dbJob.id,
-        idempotencyKey: `analyze:${content.id}:${rootJobId}`,
+        idempotencyKey: `analyze:${content.id}:1.0`,
         input: { contentId: content.id }
       });
       if (analyzeChild.parentJobId === dbJob.id) newChildrenCount++;
@@ -349,7 +367,7 @@ const worker = new Worker('klarix-sync', async job => {
       const content = await prisma.content.findUnique({
         where: { id: contentId },
         include: { 
-          media: true,
+          media: { orderBy: { createdAt: 'asc' } },
           metricSnapshots: { orderBy: { observedAt: 'desc' }, take: 1 } 
         }
       });
@@ -364,15 +382,27 @@ const worker = new Worker('klarix-sync', async job => {
 
       const brand = await prisma.brand.findUnique({ where: { id: brandId } });
       const metrics = content.metricSnapshots.length > 0 ? content.metricSnapshots[0] : null;
-      // Using thumbnailUrl if available, otherwise sourceUrl. Fallback to null.
-      const mediaPayload = content.media[0] ? (content.media[0].thumbnailUrl || content.media[0].sourceUrl) : null;
+      // Pass the entire sequence of media source URLs for carousels and videos
+      const mediaPayload = content.media.map(m => m.sourceUrl).filter(Boolean);
 
       const analysisResult = await analyzePost(brand, content, metrics, mediaPayload);
 
-      await prisma.contentAnalysis.create({
-        data: {
+      await prisma.contentAnalysis.upsert({
+        where: {
+          contentId_version: { contentId, version: analysisResult.version }
+        },
+        create: {
           contentId,
           version: analysisResult.version,
+          status: analysisResult.status,
+          visualFindings: analysisResult.visualFindings,
+          contentFindings: analysisResult.contentFindings,
+          perfFindings: analysisResult.perfFindings,
+          confidence: analysisResult.confidence,
+          providerMeta: analysisResult.providerMeta,
+          completedAt: new Date()
+        },
+        update: {
           status: analysisResult.status,
           visualFindings: analysisResult.visualFindings,
           contentFindings: analysisResult.contentFindings,
@@ -400,8 +430,8 @@ const worker = new Worker('klarix-sync', async job => {
       });
       
       const parentJob = await prisma.job.findUnique({ where: { id: dbJob.parentJobId } });
-      if (parentJob) {
-        await updateSyncProgress(dbJob.parentJobId);
+      if (parentJob && parentJob.parentJobId) {
+        await updateSyncProgress(parentJob.parentJobId);
       }
       return { success: true, status: analysisResult.status };
       
@@ -412,6 +442,27 @@ const worker = new Worker('klarix-sync', async job => {
     console.error(`[Worker] Job ${jobId} failed:`, error.message);
     // 4. Mark FAILED
     const willRetry = job.attemptsMade + 1 < (job.opts.attempts || 1);
+
+    if (dbJob.type === 'ANALYZE_CONTENT' && !willRetry) {
+      const { contentId } = input;
+      if (contentId) {
+        await prisma.content.update({
+          where: { id: contentId },
+          data: { analysisStatus: 'FAILED' }
+        }).catch(e => console.error('Failed to update content to FAILED:', e.message));
+        
+        await prisma.contentAnalysis.create({
+          data: {
+            contentId,
+            version: '1.0',
+            status: 'FAILED',
+            confidence: 0,
+            providerMeta: { error: error.message }
+          }
+        }).catch(e => console.error('Failed to create FAILED analysis record:', e.message));
+      }
+    }
+
     await prisma.job.update({
       where: { id: jobId },
       data: {

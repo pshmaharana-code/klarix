@@ -308,6 +308,7 @@ model ContentAnalysis {
 
   content         Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
 
+  @@unique([contentId, version])
   @@index([contentId, version])
   @@map("content_analyses")
 }

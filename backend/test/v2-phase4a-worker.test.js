@@ -39,6 +39,20 @@ const { createAndEnqueueJob, dispatchOutboxBatch } = await import('../jobs/jobSe
 const cryptoLib = await import('../lib/crypto.js');
 await import('../worker.js'); // Triggers worker setup
 
+mock.module('../services/postAnalysisOrchestrator.js', {
+  namedExports: {
+    analyzePost: async () => ({
+      version: '1.0',
+      status: 'COMPLETED',
+      visualFindings: { format_classification: 'mocked' },
+      contentFindings: { themes: ['mocked'] },
+      perfFindings: { metric_interpretation: 'mocked' },
+      confidence: 1.0,
+      providerMeta: { model: 'mocked' }
+    })
+  }
+});
+
 async function cleanDb() {
   await prisma.jobLog.deleteMany();
   await prisma.jobOutbox.deleteMany();

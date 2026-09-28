@@ -143,28 +143,18 @@ export async function upsertMedia({
   height = null,
   durationSeconds = null,
 }) {
-  // Repository-level idempotency: if we already have a media row with this
-  // exact (contentId, mediaType, sourceUrl) combination, return it rather
-  // than inserting a duplicate.  This is safe for Meta ingestion because
-  // CDN URLs are stable per media asset within a content item.
-  //
-  // Note: if sourceUrl is null we always insert.  This should not occur
-  // during normal Meta ingestion; if it does, the duplicate row will be
-  // visible in the database for investigation.
-  if (sourceUrl) {
-    const existing = await prisma.contentMedia.findFirst({
-      where: { contentId, mediaType, sourceUrl },
+  // For single items and Reels, there is only one media row per content.
+  // We deduplicate by contentId. This allows us to refresh the signed CDN URLs
+  // (sourceUrl and thumbnailUrl) on every sync, fixing expired poster images.
+  const existing = await prisma.contentMedia.findFirst({
+    where: { contentId },
+  });
+
+  if (existing) {
+    return prisma.contentMedia.update({
+      where: { id: existing.id },
+      data: { sourceUrl, thumbnailUrl, mediaType, objectKey, sha256, width, height, durationSeconds }
     });
-    // Backfill or update thumbnailUrl on subsequent syncs
-    if (existing) {
-      if (thumbnailUrl && existing.thumbnailUrl !== thumbnailUrl) {
-        return prisma.contentMedia.update({
-          where: { id: existing.id },
-          data: { thumbnailUrl }
-        });
-      }
-      return existing;
-    }
   }
 
   return prisma.contentMedia.create({
@@ -180,6 +170,28 @@ export async function upsertMedia({
       durationSeconds,
     },
   });
+}
+
+/**
+ * Transactionally replaces all existing media rows for a given contentId with a new set of carousel slides.
+ * This guarantees idempotency for re-syncs when Meta Graph API CDN signed URLs change.
+ * Order is explicitly enforced via sequentially offset createdAt timestamps, avoiding schema migrations.
+ */
+export async function replaceCarouselMedia({ contentId, validChildren }) {
+  const baseTime = Date.now();
+  const createData = validChildren.map((child, index) => ({
+    contentId,
+    mediaType: child.mediaType || 'IMAGE',
+    sourceUrl: child.mediaUrl,
+    thumbnailUrl: null,
+    // Add sequential millisecond offsets to guarantee deterministic retrieval order via orderBy: { createdAt: 'asc' }
+    createdAt: new Date(baseTime + index),
+  }));
+
+  return prisma.$transaction([
+    prisma.contentMedia.deleteMany({ where: { contentId } }),
+    prisma.contentMedia.createMany({ data: createData })
+  ]);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

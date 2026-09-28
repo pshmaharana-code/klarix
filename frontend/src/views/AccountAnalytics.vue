@@ -79,24 +79,14 @@
         </div>
 
         <!-- Case 2: Breakdown rows exist but Meta didn't provide per-type splits -->
-        <div v-else class="p-6">
-          <div class="overflow-x-auto">
-            <table class="w-full text-left text-sm text-gray-400">
-              <thead class="text-xs uppercase bg-gray-950 text-gray-500">
-                <tr>
-                  <th scope="col" class="px-6 py-3">Date</th>
-                  <th scope="col" class="px-6 py-3 text-right">Reach (All Media Types)</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="row in breakdownRows" :key="row.endTime" class="border-b border-gray-800 hover:bg-gray-800/50">
-                  <td class="px-6 py-4 font-medium text-white whitespace-nowrap">{{ formatDate(row.endTime) }}</td>
-                  <td class="px-6 py-4 text-right">{{ row.value.toLocaleString() }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <p class="text-xs text-gray-600 mt-4 italic">Per-media-type breakdown is not yet available from Meta for this account. This typically becomes available with higher reach volume.</p>
+        <div v-else class="p-8 text-center bg-gray-800/20 border border-gray-800 rounded-lg m-6">
+          <svg class="mx-auto h-12 w-12 text-gray-600 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <h4 class="text-sm font-medium text-gray-300">Breakdown Unavailable</h4>
+          <p class="text-xs text-gray-500 mt-2 max-w-md mx-auto">
+            Per-media-type breakdown is not yet available from Meta for this account. This typically becomes available automatically once the account reaches a higher reach volume.
+          </p>
         </div>
       </div>
 
