@@ -33,6 +33,12 @@ export async function runVisualAnalyst(brandContext, content, mediaPayload) {
     mediaParts = [{ type: 'image_url', image_url: { url: mediaPayload } }];
   }
 
+  if (mediaParts.length === 0) {
+    const err = new Error('No valid media provided for visual analysis');
+    err.retryable = false;
+    throw err;
+  }
+
   const userMessage = [
     ...mediaParts,
     {
@@ -44,8 +50,8 @@ export async function runVisualAnalyst(brandContext, content, mediaPayload) {
       })
     }
   ];
-  const raw = await callAgent(VISUAL_SYSTEM_PROMPT, userMessage, true);
-  return visualSchema.parse(raw);
+  const result = await callAgent(VISUAL_SYSTEM_PROMPT, userMessage, true);
+  return { ...visualSchema.parse(result.data), _model: result.model };
 }
 
 // -----------------------------------------------------------------------------
@@ -79,8 +85,8 @@ export async function runContentAnalyst(brandContext, content) {
       })
     }
   ];
-  const raw = await callAgent(CONTENT_SYSTEM_PROMPT, userMessage, true);
-  return contentSchema.parse(raw);
+  const result = await callAgent(CONTENT_SYSTEM_PROMPT, userMessage, true);
+  return { ...contentSchema.parse(result.data), _model: result.model };
 }
 
 // -----------------------------------------------------------------------------
@@ -112,8 +118,8 @@ export async function runPerformanceAnalyst(brandContext, content, metrics) {
       })
     }
   ];
-  const raw = await callAgent(PERFORMANCE_SYSTEM_PROMPT, userMessage, true);
-  return performanceSchema.parse(raw);
+  const result = await callAgent(PERFORMANCE_SYSTEM_PROMPT, userMessage, true);
+  return { ...performanceSchema.parse(result.data), _model: result.model };
 }
 
 // -----------------------------------------------------------------------------
@@ -128,7 +134,7 @@ export async function analyzePost(brandContext, content, metrics, mediaPayload) 
       return await agentPromise;
     } catch (e) {
       if (e.retryable) throw e;
-      return { _error: e.message };
+      return { _error: e.message, _retryable: !!e.retryable };
     }
   };
 
@@ -141,7 +147,9 @@ export async function analyzePost(brandContext, content, metrics, mediaPayload) 
 
   // If all failed, throw
   if (visualFindings._error && contentFindings._error && perfFindings._error) {
-    throw new Error('All analysis agents failed');
+    const err = new Error(`All agents failed. V: ${visualFindings._error}, C: ${contentFindings._error}, P: ${perfFindings._error}`);
+    err.retryable = visualFindings._retryable || contentFindings._retryable || perfFindings._retryable;
+    throw err;
   }
 
   // Calculate confidence based on partial failures
@@ -153,15 +161,23 @@ export async function analyzePost(brandContext, content, metrics, mediaPayload) 
   const confidence = successes / 3.0;
   const status = successes === 3 ? 'COMPLETED' : 'PARTIAL';
 
+  const models = [
+    visualFindings._model,
+    contentFindings._model,
+    perfFindings._model
+  ].filter(Boolean);
+  const primaryModelUsed = models.length > 0 ? models[0] : "unknown";
+
   return {
     version: "1.0",
     status,
-    visualFindings: visualFindings._error ? null : visualFindings,
-    contentFindings: contentFindings._error ? null : contentFindings,
-    perfFindings: perfFindings._error ? null : perfFindings,
+    visualFindings: visualFindings._error ? { error: visualFindings._error } : visualFindings,
+    contentFindings: contentFindings._error ? { error: contentFindings._error } : contentFindings,
+    perfFindings: perfFindings._error ? { error: perfFindings._error } : perfFindings,
     confidence,
     providerMeta: {
-      model: "gemini-3.8-flash",
+      model: primaryModelUsed,
+      models,
       successes,
       timestamp: new Date().toISOString(),
       metricsObservedAt: metrics?.observedAt ? new Date(metrics.observedAt).toISOString() : null

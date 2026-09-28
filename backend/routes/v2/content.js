@@ -171,12 +171,26 @@ globalContentRouter.post('/:contentId/analyze', async (req, res) => {
       return res.status(404).json({ success: false, error: 'NOT_FOUND', message: 'Content not found' });
     }
 
-    // Reuse existing analysis job flow and idempotency rules
+    // Check for an active job to prevent concurrent duplicates
+    const activeJob = await prisma.job.findFirst({
+      where: {
+        type: 'ANALYZE_CONTENT',
+        brandId: brand.id,
+        state: { in: ['CREATED', 'QUEUED', 'PROCESSING', 'RETRY_PENDING'] },
+        idempotencyKey: { startsWith: `analyze:${content.id}:1.0` }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (activeJob) {
+      return res.json({ success: true, data: { jobId: activeJob.id, status: activeJob.state } });
+    }
+
     const job = await createAndEnqueueJob({
       brandId: brand.id,
       type: 'ANALYZE_CONTENT',
       parentJobId: null, // manual invocation has no parent
-      idempotencyKey: `analyze:${content.id}:1.0`,
+      idempotencyKey: `analyze:${content.id}:1.0:${Date.now()}`,
       input: { contentId: content.id }
     });
 

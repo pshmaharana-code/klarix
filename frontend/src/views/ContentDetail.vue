@@ -189,7 +189,13 @@
                 <td class="px-4 py-3 whitespace-nowrap">{{ formatShortDate(snap.observedAt) }}</td>
                 <td class="px-4 py-3">{{ formatNumber(snap.reach) }}</td>
                 <td class="px-4 py-3">{{ formatNumber(snap.plays) }}</td>
-                <td class="px-4 py-3">{{ formatNumber(snap.totalInteractions) }}</td>
+                <td class="px-4 py-3">
+                  {{ formatNumber(snap.totalInteractions ?? (
+                    (snap.likes != null && snap.comments != null && snap.saves != null && snap.shares != null) 
+                      ? (snap.likes + snap.comments + snap.saves + snap.shares) : null
+                  )) }}
+                  <span v-if="snap.totalInteractions == null && snap.likes != null && snap.comments != null && snap.saves != null && snap.shares != null" class="text-xs text-gray-500 ml-1" title="Derived by Klarix">*</span>
+                </td>
                 <td class="px-4 py-3">{{ formatNumber(snap.likes) }}</td>
                 <td class="px-4 py-3">{{ formatNumber(snap.comments) }}</td>
                 <td class="px-4 py-3">{{ formatNumber(snap.shares) }}</td>
@@ -260,7 +266,12 @@ const primaryMedia = computed(() => {
 
 const latestMetrics = computed(() => {
   if (content.value && content.value.metricSnapshots && content.value.metricSnapshots.length > 0) {
-    return content.value.metricSnapshots[0];
+    const snap = { ...content.value.metricSnapshots[0] };
+    if (snap.totalInteractions == null && snap.likes != null && snap.comments != null && snap.saves != null && snap.shares != null) {
+      snap.totalInteractions = snap.likes + snap.comments + snap.saves + snap.shares;
+      snap._isDerivedInteractions = true;
+    }
+    return snap;
   }
   return null;
 });
@@ -278,7 +289,7 @@ const metricDisplayList = computed(() => {
     { key: 'reach', label: 'Reach', format: formatNumber },
     { key: 'impressions', label: 'Impressions', format: formatNumber },
     { key: 'plays', label: 'Plays', format: formatNumber },
-    { key: 'totalInteractions', label: 'Total Interactions', format: formatNumber },
+    { key: 'totalInteractions', label: latestMetrics.value._isDerivedInteractions ? 'Total Interactions (Derived)' : 'Total Interactions', format: formatNumber },
     { key: 'likes', label: 'Likes', format: formatNumber },
     { key: 'comments', label: 'Comments', format: formatNumber },
     { key: 'shares', label: 'Shares', format: formatNumber },
@@ -291,7 +302,7 @@ const metricDisplayList = computed(() => {
       { key: 'reelsSkipRate', label: 'Skip Rate', format: formatPercentage }
     );
   }
-  return items.filter(m => latestMetrics.value[m.key] !== null && latestMetrics.value[m.key] !== undefined);
+  return items;
 });
 
 const formatDate = (dateString) => {
@@ -311,12 +322,12 @@ const formatShortDate = (dateString) => {
 };
 
 const formatNumber = (num) => {
-  if (num === null || num === undefined) return '-';
+  if (num === null || num === undefined) return '—';
   return new Intl.NumberFormat().format(num);
 };
 
 const formatTime = (ms) => {
-  if (ms === null || ms === undefined) return '-';
+  if (ms === null || ms === undefined) return '—';
   const totalSeconds = Math.floor(ms / 1000);
   const m = Math.floor(totalSeconds / 60);
   const s = totalSeconds % 60;
@@ -325,7 +336,7 @@ const formatTime = (ms) => {
 };
 
 const formatPercentage = (val) => {
-  if (val === null || val === undefined) return '-';
+  if (val === null || val === undefined) return '—';
   return `${val}%`;
 };
 

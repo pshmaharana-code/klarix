@@ -209,10 +209,10 @@ export async function callAgent(systemPrompt, userMessage, useVision = false, us
     const cleaned = rawText.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim()
 
     try {
-      return JSON.parse(cleaned)
+      return { data: JSON.parse(cleaned), model }
     } catch {
       const match = cleaned.match(/\{[\s\S]*\}/)
-      if (match) return JSON.parse(match[0])
+      if (match) return { data: JSON.parse(match[0]), model }
       throw new Error("Could not parse JSON from Gemini response.")
     }
 

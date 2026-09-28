@@ -215,13 +215,24 @@ const worker = new Worker('klarix-sync', async job => {
       let newChildrenCount = metricsChild.parentJobId === dbJob.id ? 1 : 0;
 
       // Phase 4: Create ANALYZE_CONTENT child
-      const analyzeChild = await createAndEnqueueJob({
-        brandId,
-        type: 'ANALYZE_CONTENT',
-        parentJobId: dbJob.id,
-        idempotencyKey: `analyze:${content.id}:1.0`,
-        input: { contentId: content.id }
+      let analyzeChild = await prisma.job.findFirst({
+        where: {
+          type: 'ANALYZE_CONTENT',
+          brandId,
+          idempotencyKey: { startsWith: `analyze:${content.id}:1.0` }
+        },
+        orderBy: { createdAt: 'desc' }
       });
+
+      if (!analyzeChild) {
+        analyzeChild = await createAndEnqueueJob({
+          brandId,
+          type: 'ANALYZE_CONTENT',
+          parentJobId: dbJob.id,
+          idempotencyKey: `analyze:${content.id}:1.0`,
+          input: { contentId: content.id }
+        });
+      }
       if (analyzeChild.parentJobId === dbJob.id) newChildrenCount++;
 
       await prisma.job.update({ 
@@ -290,10 +301,14 @@ const worker = new Worker('klarix-sync', async job => {
       const accessToken = cryptoLib.decrypt(account.encryptedToken);
       if (!accessToken) throw new Error('Cannot decrypt access token');
 
-      // The configured Phase 4A account metrics (only reach/day for now, but configured to add more later)
       const configuredMetrics = [
         { metric: 'reach', period: 'day', breakdown: null },
-        { metric: 'reach', period: 'day', breakdown: 'media_product_type' }
+        { metric: 'reach', period: 'day', breakdown: 'media_product_type' },
+        { metric: 'total_interactions', period: 'day', breakdown: null },
+        { metric: 'likes', period: 'day', breakdown: null },
+        { metric: 'comments', period: 'day', breakdown: null },
+        { metric: 'shares', period: 'day', breakdown: null },
+        { metric: 'saves', period: 'day', breakdown: null }
       ];
 
       let partialFailure = false;
@@ -312,6 +327,13 @@ const worker = new Worker('klarix-sync', async job => {
           if (res.isSupported && Array.isArray(res.data)) {
             for (const item of res.data) {
               const breakdownDef = config.breakdown || 'none';
+              
+              // Prevent duplication bug: if we requested a breakdown but Meta 
+              // returned empty breakdowns (e.g., due to privacy thresholds), skip it.
+              if (config.breakdown && (!item.breakdowns || item.breakdowns.length === 0)) {
+                continue;
+              }
+
               for (const val of item.values) {
                 if (val.endTime) {
                   await contentRepository.upsertSocialAccountMetricSnapshot({
