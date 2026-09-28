@@ -12,6 +12,6 @@ export default defineConfig({
         changeOrigin: true
       }
     },
-    allowedHosts: ['causing-has-workstation-ist.trycloudflare.com']
+    allowedHosts: ['ticket-competitors-mit-licensing.trycloudflare.com']
   }
 })
