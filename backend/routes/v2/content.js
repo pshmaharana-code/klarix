@@ -28,6 +28,13 @@ function sanitizeAnalysis(analysis) {
   return { id, version, status, visualFindings, contentFindings, perfFindings, confidence, providerMeta, completedAt, createdAt };
 }
 
+function sanitizeDerivedMetric(metric) {
+  if (!metric) return metric;
+  if (Array.isArray(metric)) return metric.map(sanitizeDerivedMetric);
+  const { id, calculationVersion, likeRate, commentRate, saveRate, shareRate, interactionRate, viewToReachRatio, percentileComparison, baselineComparison, calculatedAt } = metric;
+  return { id, calculationVersion, likeRate, commentRate, saveRate, shareRate, interactionRate, viewToReachRatio, percentileComparison, baselineComparison, calculatedAt };
+}
+
 function sanitizeContent(c) {
   return {
     id: c.id,
@@ -39,6 +46,7 @@ function sanitizeContent(c) {
     analysisStatus: c.analysisStatus,
     media: sanitizeMedia(c.media),
     metricSnapshots: sanitizeMetricSnapshot(c.metricSnapshots),
+    derivedMetrics: sanitizeDerivedMetric(c.derivedMetrics),
     analyses: sanitizeAnalysis(c.analyses)
   };
 }

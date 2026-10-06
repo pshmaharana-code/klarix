@@ -15,6 +15,7 @@ import brandsRouter from './routes/v2/brands.js'
 import connectionsRouter from './routes/v2/connections.js'
 import jobsRouter from './routes/v2/jobs.js'
 import { brandContentRouter, globalContentRouter } from './routes/v2/content.js'
+import { brandPatternsRouter, patternDetailRouter } from './routes/v2/patterns.js'
 import { requireAuth } from './middleware/auth.js'
 
 dotenv.config()
@@ -41,6 +42,8 @@ app.use('/api/v2/brands', brandsRouter)
 app.use('/api/v2/brands/:brandId', requireAuth, connectionsRouter)
 app.use('/api/v2/brands/:brandId/jobs', requireAuth, jobsRouter)
 app.use('/api/v2/brands/:brandId/content', requireAuth, brandContentRouter)
+app.use('/api/v2/brands/:brandId/patterns', requireAuth, brandPatternsRouter)
+app.use('/api/v2/patterns', requireAuth, patternDetailRouter)
 app.use('/api/v2/content', requireAuth, globalContentRouter)
 
 // Configure Multer in-memory upload handler (up to 60MB for video content)
@@ -306,4 +309,3 @@ app.listen(PORT, () => {
   console.log(`✨ Sleight-of-Hand Asynchronous Parallel Intelligence Active`)
   console.log(`======================================================\n`)
 })
-

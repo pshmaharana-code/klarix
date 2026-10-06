@@ -21,6 +21,7 @@ enum JobType {
   FETCH_ACCOUNT_METRICS // Phase 4A
   ANALYZE_CONTENT // Phase 4
   ANALYZE_BATCH // Phase 4
+  DISCOVER_PATTERNS // Phase 6
 }
 
 enum JobState {
@@ -96,6 +97,8 @@ model Brand {
   oauthStates    OAuthState[]
   // Phase 3 addition
   contents       Content[]
+  // Phase 6 addition
+  patterns       Pattern[]
 
   @@map("brands")
 }
@@ -277,6 +280,8 @@ model Content {
   media           ContentMedia[]
   metricSnapshots ContentMetricSnapshot[]
   analyses        ContentAnalysis[]
+  derivedMetrics  ContentDerivedMetric[]
+  patternEvidence PatternEvidence[]
 
   // One row per (account, external ID) — idempotency for repeat sync
   @@unique([socialAccountId, externalContentId])
@@ -293,15 +298,15 @@ model ContentAnalysis {
   contentId       String   @map("content_id")
   version         String   @default("1.0")
   status          AnalysisStatus @default(COMPLETED)
-  
+
   // Structured results
   visualFindings  Json?    @map("visual_findings")
   contentFindings Json?    @map("content_findings")
   perfFindings    Json?    @map("perf_findings")
-  
+
   confidence      Float?
   providerMeta    Json?    @map("provider_meta")
-  
+
   completedAt     DateTime? @map("completed_at")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
@@ -362,6 +367,8 @@ model ContentMetricSnapshot {
   createdAt                 DateTime @default(now()) @map("created_at")
 
   content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  derivedMetrics ContentDerivedMetric[]
+  patternEvidence PatternEvidence[]
 
   // One snapshot per content per observation time — immutability enforced by DB
   @@unique([contentId, observedAt])
@@ -390,4 +397,78 @@ model SocialAccountMetricSnapshot {
   @@unique([socialAccountId, metricName, period, endTime, breakdownDefinition])
   @@index([socialAccountId, metricName, endTime])
   @@map("social_account_metric_snapshots")
+}
+
+/// Phase 5: Content-level derived analytics.
+model ContentDerivedMetric {
+  id                  String   @id @default(uuid())
+  contentId           String   @map("content_id")
+  calculationVersion  String   @default("1.0") @map("calculation_version")
+
+  // Metric values
+  likeRate            Float?   @map("like_rate")
+  commentRate         Float?   @map("comment_rate")
+  saveRate            Float?   @map("save_rate")
+  shareRate           Float?   @map("share_rate")
+  interactionRate     Float?   @map("interaction_rate")
+  viewToReachRatio    Float?   @map("view_to_reach_ratio")
+
+  // Spec mentions percentile/baseline comparison
+  percentileComparison Json?   @map("percentile_comparison")
+  baselineComparison   Json?   @map("baseline_comparison")
+
+  calculatedAt        DateTime @default(now()) @map("calculated_at")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  sourceSnapshotId    String?  @map("source_snapshot_id")
+  sourceSnapshot      ContentMetricSnapshot? @relation(fields: [sourceSnapshotId], references: [id], onDelete: SetNull)
+
+  content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  // One derived metric version per content
+  @@unique([contentId, calculationVersion])
+  @@index([contentId])
+  @@map("content_derived_metrics")
+}
+
+/// Phase 6: An evidence-backed cross-catalogue pattern.
+model Pattern {
+  id                String    @id @default(uuid())
+  brandId           String    @map("brand_id")
+  category          String
+  title             String
+  claim             String
+  confidence        Decimal?  @db.Decimal(5, 2)
+  impact            Json?
+  status            String    @default("ACTIVE")
+  analysisVersion   String    @default("1.0") @map("analysis_version")
+  recommendedAction String?   @map("recommended_action")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  supersededAt      DateTime? @map("superseded_at")
+
+  brand    Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  evidence PatternEvidence[]
+
+  @@index([brandId, status])
+  @@map("patterns")
+}
+
+/// Evidence rows are required before a pattern can be ACTIVE.
+model PatternEvidence {
+  id               String                @id @default(uuid())
+  patternId        String                @map("pattern_id")
+  contentId        String?               @map("content_id")
+  metricSnapshotId String?               @map("metric_snapshot_id")
+  contribution     Float?
+  summary          String
+  createdAt        DateTime              @default(now()) @map("created_at")
+
+  pattern        Pattern                @relation(fields: [patternId], references: [id], onDelete: Cascade)
+  content        Content?               @relation(fields: [contentId], references: [id], onDelete: SetNull)
+  metricSnapshot ContentMetricSnapshot? @relation(fields: [metricSnapshotId], references: [id], onDelete: SetNull)
+
+  @@index([patternId, createdAt])
+  @@index([contentId])
+  @@map("pattern_evidence")
 }

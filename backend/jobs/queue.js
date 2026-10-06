@@ -14,7 +14,7 @@ const jobsQueue = new Queue('klarix-sync', {
     attempts: 3,
     backoff: {
       type: 'exponential',
-      delay: 2000, // 2s, 4s, 8s
+      delay: 30000, // 30s, 60s, 120s to respect 5 RPM limits over time
     },
     removeOnComplete: false,
     removeOnFail: false,

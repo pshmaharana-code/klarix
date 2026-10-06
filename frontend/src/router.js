@@ -43,6 +43,18 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/patterns',
+    name: 'Patterns',
+    component: () => import('./views/Patterns.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/patterns/:patternId',
+    name: 'PatternDetail',
+    component: () => import('./views/PatternDetail.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/onboarding/connect',
     name: 'Connect',
     component: Connect,
@@ -76,7 +88,7 @@ export const router = createRouter({
   }
 })
 
-router.beforeEach(async (to, from, next) => {
+router.beforeEach(async (to) => {
   const authStore = useAuthStore();
   
   if (authStore.isInitializing) {
@@ -84,10 +96,10 @@ router.beforeEach(async (to, from, next) => {
   }
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    next({ name: 'Login' });
+    return { name: 'Login' };
   } else if (to.name === 'Login' && authStore.isAuthenticated) {
-    next({ name: 'Dashboard' });
-  } else {
-    next();
+    return { name: 'Dashboard' };
   }
+
+  return true;
 });

@@ -285,16 +285,20 @@ const latestAnalysis = computed(() => {
 
 const metricDisplayList = computed(() => {
   if (!latestMetrics.value) return [];
-  const items = [
-    { key: 'reach', label: 'Reach', format: formatNumber },
-    { key: 'impressions', label: 'Impressions', format: formatNumber },
+  let items = [
+    { key: 'reach', label: 'Reach', format: formatNumber }
+  ];
+  if (content.value?.type !== 'REEL') {
+    items.push({ key: 'impressions', label: 'Impressions', format: formatNumber });
+  }
+  items.push(
     { key: 'plays', label: 'Plays', format: formatNumber },
     { key: 'totalInteractions', label: latestMetrics.value._isDerivedInteractions ? 'Total Interactions (Derived)' : 'Total Interactions', format: formatNumber },
     { key: 'likes', label: 'Likes', format: formatNumber },
     { key: 'comments', label: 'Comments', format: formatNumber },
     { key: 'shares', label: 'Shares', format: formatNumber },
-    { key: 'saves', label: 'Saves', format: formatNumber },
-  ];
+    { key: 'saves', label: 'Saves', format: formatNumber }
+  );
   if (content.value?.type === 'REEL') {
     items.push(
       { key: 'igReelsAvgWatchTime', label: 'Average Watch Time', format: formatTime },

@@ -509,7 +509,7 @@ async function fetchMediaInsights(accessToken, mediaId, mediaType = 'IMAGE') {
   // We request all we want and gracefully handle missing ones.
   const REQUESTED_METRICS = (mediaType === 'VIDEO' || mediaType === 'REEL')
     ? 'reach,views,likes,comments,saved,shares,total_interactions,ig_reels_avg_watch_time,ig_reels_video_view_total_time,reels_skip_rate'
-    : 'reach,views,likes,comments,saved,shares';
+    : 'reach,impressions,views,likes,comments,saved,shares';
 
   const data = await graphGet(`/${mediaId}/insights`, accessToken, {
     metric: REQUESTED_METRICS,

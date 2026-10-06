@@ -6,7 +6,7 @@ export const requireBrandAccess = async (req, res, next) => {
   try {
     // Brand ID can be in params or body depending on the request
     const brandId = req.params.brandId || req.body.brandId;
-    
+
     if (!brandId) {
       return res.status(400).json({ success: false, error: 'VALIDATION_ERROR', message: 'Brand ID is required' });
     }

@@ -7,13 +7,13 @@ const prisma = new PrismaClient();
 export const requireAuth = async (req, res, next) => {
   try {
     const token = req.cookies.token;
-    
+
     if (!token) {
       return res.status(401).json({ success: false, error: 'UNAUTHENTICATED', message: 'No authentication token provided' });
     }
 
     const decoded = jwt.verify(token, loadConfig().jwtSecret);
-    
+
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId }
     });

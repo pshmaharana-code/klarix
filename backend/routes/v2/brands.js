@@ -3,6 +3,8 @@ import { PrismaClient } from '@prisma/client';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireBrandAccess } from '../../middleware/brandContext.js';
 import * as accountMetricsService from '../../services/accountMetricsService.js';
+import * as contentAnalyticsService from '../../services/contentAnalyticsService.js';
+import { z } from 'zod';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -91,6 +93,40 @@ router.get('/:brandId/account-metrics', requireAuth, requireBrandAccess, async (
   } catch (error) {
     console.error('[Klarix API] Account Metrics Error:', error);
     res.status(500).json({ success: false, error: 'INTERNAL_ERROR', message: 'Could not fetch account metrics' });
+  }
+});
+
+const overviewQuerySchema = z.object({
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  contentType: z.enum(['IMAGE', 'VIDEO', 'CAROUSEL', 'REEL', 'OTHER']).optional()
+}).refine(data => {
+  if (data.from && data.to) {
+    return new Date(data.from) <= new Date(data.to);
+  }
+  return true;
+}, { message: "from date must be before or equal to to date" });
+
+// Phase 5: Content-level analytics overview
+router.get('/:brandId/analytics/overview', requireAuth, requireBrandAccess, async (req, res) => {
+  try {
+    const validatedQuery = overviewQuerySchema.safeParse(req.query);
+    if (!validatedQuery.success) {
+      return res.status(400).json({ success: false, error: 'BAD_REQUEST', message: 'Invalid query parameters', details: validatedQuery.error.format() });
+    }
+
+    const { from, to, contentType } = validatedQuery.data;
+
+    const data = await contentAnalyticsService.getAnalyticsOverview(req.brand.id, {
+      from,
+      to,
+      contentType
+    });
+
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error('[Klarix API] Analytics Overview Error:', error);
+    res.status(500).json({ success: false, error: 'INTERNAL_ERROR', message: 'Could not fetch analytics overview' });
   }
 });
 

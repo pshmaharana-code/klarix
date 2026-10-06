@@ -349,7 +349,7 @@ export async function findAccountMetricSnapshots({
   const where = {
     socialAccount: { brandId }
   };
-  
+
   if (period) where.period = period;
   if (breakdown) where.breakdownDefinition = breakdown;
   if (since || until) {
@@ -478,10 +478,66 @@ export async function findContentById(contentId) {
       metricSnapshots: {
         orderBy: { observedAt: 'desc' },
       },
+      derivedMetrics: {
+        orderBy: { calculatedAt: 'desc' },
+        take: 1,
+      },
       analyses: {
         orderBy: { createdAt: 'desc' },
         take: 1,
       },
     },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// upsertContentDerivedMetric
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Persist calculated derived metrics for a content item.
+ * @param {object} params
+ * @param {string} params.contentId
+ * @param {string} params.calculationVersion
+ * @param {number} [params.likeRate]
+ * @param {number} [params.commentRate]
+ * @param {number} [params.saveRate]
+ * @param {number} [params.shareRate]
+ * @param {number} [params.interactionRate]
+ * @param {number} [params.viewToReachRatio]
+ */
+export async function upsertContentDerivedMetric(params) {
+  const { contentId, calculationVersion = '1.0', sourceSnapshotId, ...metrics } = params;
+
+  const whereKey = {
+    contentId_calculationVersion: {
+      contentId,
+      calculationVersion,
+    }
+  };
+
+  const updateData = {
+    ...metrics,
+    calculatedAt: new Date(),
+  };
+  if (sourceSnapshotId !== undefined) {
+    updateData.sourceSnapshotId = sourceSnapshotId;
+  }
+
+  // Remove undefined fields to not overwrite them in partial updates
+  Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
+
+  const createData = {
+    contentId,
+    calculationVersion,
+    sourceSnapshotId,
+    ...metrics
+  };
+  Object.keys(createData).forEach(key => createData[key] === undefined && delete createData[key]);
+
+  return prisma.contentDerivedMetric.upsert({
+    where: whereKey,
+    create: createData,
+    update: updateData,
   });
 }

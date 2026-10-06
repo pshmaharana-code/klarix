@@ -1,4 +1,9 @@
-import { Worker } from 'bullmq';
+import pkg from 'bullmq';
+const {
+  Worker,
+  DelayedError = class DelayedError extends Error { },
+  UnrecoverableError = class UnrecoverableError extends Error { }
+} = pkg;
 import { PrismaClient } from '@prisma/client';
 import { connection } from './jobs/queue.js';
 import { dispatchOutboxBatch, createAndEnqueueJob } from './jobs/jobService.js';
@@ -8,14 +13,17 @@ import { analyzePost } from './services/postAnalysisOrchestrator.js';
 import * as metaAdapter from './integrations/metaAdapter.js';
 import * as cryptoLib from './lib/crypto.js';
 import { loadConfig, redactRedisUrl } from './lib/config.js';
+import { calculateDerivedMetrics } from './services/analyticsService.js';
+import { discoverPatterns } from './services/patternService.js';
 
 const prisma = new PrismaClient();
 
 console.log('👷 Klarix V2 Worker starting...');
 console.log('🔌 Connecting to Redis:', redactRedisUrl(loadConfig().redisUrl));
 
-const worker = new Worker('klarix-sync', async job => {
+export async function processJob(job, token) {
   const { jobId, brandId, input } = job.data;
+  const workerToken = token || job.token;
 
   console.log(`[Worker] Received job ${job.id} for brand ${brandId}`);
 
@@ -72,7 +80,7 @@ const worker = new Worker('klarix-sync', async job => {
 
       // Step D: Upsert Social Account
       await updateProgress(jobId, 90, 'Saving', 'Persisting account link...');
-      
+
       const accountKey = {
         platform_externalAccountId: {
           platform: profile.platform,
@@ -95,7 +103,7 @@ const worker = new Worker('klarix-sync', async job => {
         expiry: expiryDate,
         lastSync: new Date()
       };
-      
+
       if (existingAccount) {
         existingAccount = await prisma.socialAccount.update({ where: { id: existingAccount.id }, data: accountData });
       } else {
@@ -124,7 +132,7 @@ const worker = new Worker('klarix-sync', async job => {
       await updateProgress(jobId, 95, 'Fetching media', 'Retrieving recent content...');
       const mediaResponse = await metaAdapter.fetchUserMedia(accessToken, existingAccount.externalAccountId);
       const items = mediaResponse.items || [];
-      
+
       let newChildJobs = 0;
       for (const item of items) {
         const child = await createAndEnqueueJob({
@@ -148,13 +156,13 @@ const worker = new Worker('klarix-sync', async job => {
       });
       if (metricsJob.parentJobId === jobId) newChildJobs++;
 
-      await prisma.job.update({ 
-        where: { id: jobId }, 
-        data: { 
+      await prisma.job.update({
+        where: { id: jobId },
+        data: {
           totalCount: newChildJobs,
           result: { username: profile.username },
           logs: { create: { event: 'SYNC_DISCOVERED', level: 'INFO', context: { count: items.length, newChildJobs } } }
-        } 
+        }
       });
 
       await prisma.brand.update({
@@ -164,10 +172,10 @@ const worker = new Worker('klarix-sync', async job => {
 
       await updateSyncProgress(jobId);
       return { success: true, username: profile.username, itemsCount: items.length };
-      
+
     } else if (dbJob.type === 'IMPORT_CONTENT') {
       const { socialAccountId, externalContentId, item } = input;
-      
+
       const content = await contentRepository.upsertContent({
         brandId,
         socialAccountId,
@@ -181,7 +189,7 @@ const worker = new Worker('klarix-sync', async job => {
       if (item.type === 'CAROUSEL' && Array.isArray(item.children) && item.children.length > 0) {
         // Validate children before modifying database
         const validChildren = item.children.filter(child => child && child.mediaUrl);
-        
+
         if (validChildren.length === 0) {
           console.warn(`[IMPORT_CONTENT] Carousel ${content.id} has no valid children with mediaUrl. Keeping existing media rows.`);
         } else {
@@ -205,12 +213,13 @@ const worker = new Worker('klarix-sync', async job => {
 
       // Create exactly one FETCH_METRICS child
       const rootJobId = dbJob.parentJobId;
+      const observationDate = new Date().toISOString().split('T')[0];
       const metricsChild = await createAndEnqueueJob({
         brandId,
         type: 'FETCH_METRICS',
         parentJobId: dbJob.id,
-        idempotencyKey: `metrics:${content.id}:${rootJobId}`,
-        input: { contentId: content.id, socialAccountId, externalContentId, item }
+        idempotencyKey: `metrics:${content.id}:${observationDate}`,
+        input: { contentId: content.id, socialAccountId, externalContentId, item, observationDate }
       });
       let newChildrenCount = metricsChild.parentJobId === dbJob.id ? 1 : 0;
 
@@ -235,45 +244,85 @@ const worker = new Worker('klarix-sync', async job => {
       }
       if (analyzeChild.parentJobId === dbJob.id) newChildrenCount++;
 
-      await prisma.job.update({ 
-        where: { id: jobId }, 
-        data: { 
+      await prisma.job.update({
+        where: { id: jobId },
+        data: {
           totalCount: newChildrenCount,
           state: 'COMPLETED',
           progressPercent: 100,
           progressStep: 'Complete',
           completedAt: new Date()
-        } 
+        }
       });
 
       if (rootJobId) await updateSyncProgress(rootJobId);
       return { success: true, contentId: content.id };
-      
+
     } else if (dbJob.type === 'FETCH_METRICS') {
-      const { contentId, socialAccountId, externalContentId, item } = input;
-      
+      const { contentId, socialAccountId, externalContentId, item, observationDate } = input;
+
       const account = await prisma.socialAccount.findUnique({ where: { id: socialAccountId } });
       if (!account || account.brandId !== brandId) throw new Error('SocialAccount not found or ownership mismatch');
-      
+
       const accessToken = cryptoLib.decrypt(account.encryptedToken);
       if (!accessToken) throw new Error('Cannot decrypt access token');
-      
+
       const metrics = await metaAdapter.fetchMediaInsights(accessToken, externalContentId, item.type);
-      
-      await contentRepository.createMetricSnapshot({
+
+      const observedAt = observationDate ? new Date(observationDate) : new Date();
+      if (observationDate) {
+        observedAt.setUTCHours(0, 0, 0, 0);
+      }
+
+      let snapshot;
+      try {
+        snapshot = await contentRepository.createMetricSnapshot({
+          contentId,
+          observedAt,
+          reach: metrics.reach,
+          impressions: metrics.impressions,
+          plays: metrics.plays,
+          likes: metrics.likes,
+          comments: metrics.comments,
+          saves: metrics.saves,
+          shares: metrics.shares,
+          totalInteractions: metrics.totalInteractions,
+          igReelsAvgWatchTime: metrics.igReelsAvgWatchTime,
+          igReelsVideoViewTotalTime: metrics.igReelsVideoViewTotalTime,
+          reelsSkipRate: metrics.reelsSkipRate,
+          rawPayload: metrics.rawPayload || metrics
+        });
+      } catch (err) {
+        if (err.code === 'METRIC_SNAPSHOT_CONFLICT') {
+          // If we are retrying a job and the snapshot was already created, reuse it
+          snapshot = (await prisma.contentMetricSnapshot.findFirst({
+            where: { contentId, observedAt }
+          }));
+          if (!snapshot) throw err;
+        } else {
+          throw err;
+        }
+      }
+
+      const derivedRates = calculateDerivedMetrics({
+        likes: snapshot.likes,
+        comments: snapshot.comments,
+        saves: snapshot.saves,
+        shares: snapshot.shares,
+        reach: snapshot.reach,
+        views: snapshot.plays // Instagram views are represented as plays
+      });
+
+      await contentRepository.upsertContentDerivedMetric({
         contentId,
-        observedAt: new Date(),
-        reach: metrics.reach,
-        impressions: metrics.impressions,
-        plays: metrics.plays,
-        likes: metrics.likes,
-        comments: metrics.comments,
-        saves: metrics.saves,
-        shares: metrics.shares,
-        totalInteractions: metrics.totalInteractions,
-        igReelsAvgWatchTime: metrics.igReelsAvgWatchTime,
-        igReelsVideoViewTotalTime: metrics.igReelsVideoViewTotalTime,
-        reelsSkipRate: metrics.reelsSkipRate
+        calculationVersion: '1.0',
+        sourceSnapshotId: snapshot.id,
+        likeRate: derivedRates.likeRate,
+        commentRate: derivedRates.commentRate,
+        saveRate: derivedRates.saveRate,
+        shareRate: derivedRates.shareRate,
+        interactionRate: derivedRates.interactionRate,
+        viewToReachRatio: derivedRates.viewToReachRatio
       });
 
       await prisma.job.update({
@@ -285,19 +334,21 @@ const worker = new Worker('klarix-sync', async job => {
           completedAt: new Date()
         }
       });
-      
-      const parentJob = await prisma.job.findUnique({ where: { id: dbJob.parentJobId } });
-      if (parentJob && parentJob.parentJobId) {
-        await updateSyncProgress(parentJob.parentJobId);
+
+      if (dbJob.parentJobId) {
+        const parentJob = await prisma.job.findUnique({ where: { id: dbJob.parentJobId } });
+        if (parentJob?.parentJobId) {
+          await updateSyncProgress(parentJob.parentJobId);
+        }
       }
       return { success: true };
-      
+
     } else if (dbJob.type === 'FETCH_ACCOUNT_METRICS') {
       const { socialAccountId, externalAccountId, since, until } = input;
-      
+
       const account = await prisma.socialAccount.findUnique({ where: { id: socialAccountId } });
       if (!account || account.brandId !== brandId) throw new Error('SocialAccount not found or ownership mismatch');
-      
+
       const accessToken = cryptoLib.decrypt(account.encryptedToken);
       if (!accessToken) throw new Error('Cannot decrypt access token');
 
@@ -327,7 +378,7 @@ const worker = new Worker('klarix-sync', async job => {
           if (res.isSupported && Array.isArray(res.data)) {
             for (const item of res.data) {
               const breakdownDef = config.breakdown || 'none';
-              
+
               // Prevent duplication bug: if we requested a breakdown but Meta 
               // returned empty breakdowns (e.g., due to privacy thresholds), skip it.
               if (config.breakdown && (!item.breakdowns || item.breakdowns.length === 0)) {
@@ -376,21 +427,44 @@ const worker = new Worker('klarix-sync', async job => {
           result: { partialFailure, processedAny }
         }
       });
-      
+
       const parentJob = await prisma.job.findUnique({ where: { id: dbJob.parentJobId } });
       if (parentJob) {
         await updateSyncProgress(dbJob.parentJobId);
       }
       return { success: true, partialFailure };
-      
+
+    } else if (dbJob.type === 'DISCOVER_PATTERNS') {
+      await updateProgress(jobId, 35, 'Discovering patterns', 'Comparing qualified content cohorts...');
+      const discovery = await discoverPatterns(brandId, { force: Boolean(input?.force) });
+
+      await prisma.job.update({
+        where: { id: jobId },
+        data: {
+          state: 'COMPLETED',
+          progressPercent: 100,
+          progressStep: 'Complete',
+          completedAt: new Date(),
+          result: {
+            status: discovery.status,
+            sampleSize: discovery.sampleSize,
+            evidenceCount: discovery.evidenceCount || 0,
+            patternId: discovery.patternId || null,
+            limitations: discovery.limitations
+          }
+        }
+      });
+
+      return { success: true, ...discovery };
+
     } else if (dbJob.type === 'ANALYZE_CONTENT') {
       const { contentId } = input;
-      
+
       const content = await prisma.content.findUnique({
         where: { id: contentId },
-        include: { 
+        include: {
           media: { orderBy: { createdAt: 'asc' } },
-          metricSnapshots: { orderBy: { observedAt: 'desc' }, take: 1 } 
+          metricSnapshots: { orderBy: { observedAt: 'desc' }, take: 1 }
         }
       });
       if (!content || content.brandId !== brandId) {
@@ -450,38 +524,40 @@ const worker = new Worker('klarix-sync', async job => {
           result: { version: analysisResult.version, status: analysisResult.status }
         }
       });
-      
+
       const parentJob = await prisma.job.findUnique({ where: { id: dbJob.parentJobId } });
       if (parentJob && parentJob.parentJobId) {
         await updateSyncProgress(parentJob.parentJobId);
       }
       return { success: true, status: analysisResult.status };
-      
+
     } else {
       throw new Error(`Unknown job type: ${dbJob.type}`);
     }
   } catch (error) {
     console.error(`[Worker] Job ${jobId} failed:`, error.message);
     // 4. Mark FAILED
-    const willRetry = job.attemptsMade + 1 < (job.opts.attempts || 1);
+    const maxAttempts = job.opts?.attempts || 1;
+    const currentAttempt = Math.max(job.attemptsMade + 1, dbJob?.attempts || 1);
+    const willRetry = currentAttempt < maxAttempts;
 
     if (dbJob.type === 'ANALYZE_CONTENT' && !willRetry) {
       const { contentId } = input;
       if (contentId) {
         await prisma.content.update({
           where: { id: contentId },
-          data: { analysisStatus: 'FAILED' }
-        }).catch(e => console.error('Failed to update content to FAILED:', e.message));
-        
+          data: { analysisStatus: 'PARTIAL' }
+        }).catch(e => console.error('Failed to update content to PARTIAL:', e.message));
+
         await prisma.contentAnalysis.create({
           data: {
             contentId,
             version: '1.0',
-            status: 'FAILED',
+            status: 'PARTIAL',
             confidence: 0,
             providerMeta: { error: error.message }
           }
-        }).catch(e => console.error('Failed to create FAILED analysis record:', e.message));
+        }).catch(e => console.error('Failed to create PARTIAL analysis record:', e.message));
       }
     }
 
@@ -496,9 +572,40 @@ const worker = new Worker('klarix-sync', async job => {
         logs: { create: { event: 'PROCESSING_FAILED', level: 'ERROR', context: { code: error.code || 'PROCESSING_FAILED' } } }
       }
     });
+
+    // Notify root job of failure/retry state change so progress un-sticks
+    if (dbJob && dbJob.parentJobId) {
+      try {
+        const parentJob = await prisma.job.findUnique({ where: { id: dbJob.parentJobId } });
+        if (parentJob) {
+          const rootJobId = parentJob.parentJobId ? parentJob.parentJobId : dbJob.parentJobId;
+          await updateSyncProgress(rootJobId);
+        }
+      } catch (progressErr) {
+        console.error(`[Worker] Failed to update sync progress after job ${jobId} failure:`, progressErr.message);
+      }
+    }
+
+    const retryAfterSec = parseFloat(error.retryAfter);
+    if (willRetry && Number.isFinite(retryAfterSec) && retryAfterSec > 0) {
+      const delayMs = Math.ceil(retryAfterSec * 1000);
+      const delayedTimestamp = Date.now() + delayMs;
+      console.log(`[Worker] Delaying retry for ${retryAfterSec}s (until ${new Date(delayedTimestamp).toISOString()}) due to Retry-After header.`);
+      await job.moveToDelayed(delayedTimestamp, workerToken);
+      throw new DelayedError();
+    }
+
+    if (!willRetry) {
+      const unrecoverable = new UnrecoverableError(error.message);
+      unrecoverable.code = error.code || 'PROCESSING_FAILED';
+      throw unrecoverable;
+    }
+
     throw error; // Let BullMQ know it failed for retry mechanics
   }
-}, { connection });
+}
+
+export const worker = new Worker('klarix-sync', processJob, { connection });
 
 worker.on('failed', (job, err) => {
   console.log(`[Worker] BullMQ Job ${job?.id} failed with ${err.name}`);
