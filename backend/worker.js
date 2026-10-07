@@ -218,31 +218,11 @@ export async function processJob(job, token) {
         brandId,
         type: 'FETCH_METRICS',
         parentJobId: dbJob.id,
-        idempotencyKey: `metrics:${content.id}:${observationDate}`,
+        // FIX: Ensure manual syncs aren't deduplicated across the same calendar day by appending dbJob.id
+        idempotencyKey: `metrics:${content.id}:${observationDate}:${dbJob.id}`,
         input: { contentId: content.id, socialAccountId, externalContentId, item, observationDate }
       });
       let newChildrenCount = metricsChild.parentJobId === dbJob.id ? 1 : 0;
-
-      // Phase 4: Create ANALYZE_CONTENT child
-      let analyzeChild = await prisma.job.findFirst({
-        where: {
-          type: 'ANALYZE_CONTENT',
-          brandId,
-          idempotencyKey: { startsWith: `analyze:${content.id}:1.0` }
-        },
-        orderBy: { createdAt: 'desc' }
-      });
-
-      if (!analyzeChild) {
-        analyzeChild = await createAndEnqueueJob({
-          brandId,
-          type: 'ANALYZE_CONTENT',
-          parentJobId: dbJob.id,
-          idempotencyKey: `analyze:${content.id}:1.0`,
-          input: { contentId: content.id }
-        });
-      }
-      if (analyzeChild.parentJobId === dbJob.id) newChildrenCount++;
 
       await prisma.job.update({
         where: { id: jobId },
@@ -325,6 +305,17 @@ export async function processJob(job, token) {
         viewToReachRatio: derivedRates.viewToReachRatio
       });
 
+      // V2 FIX: Enqueue ANALYZE_CONTENT only AFTER metrics are successfully saved.
+      // We attach it to the same root parent job (dbJob.parentJobId) so progress tracking still works.
+      await createAndEnqueueJob({
+        brandId,
+        type: 'ANALYZE_CONTENT',
+        parentJobId: dbJob.parentJobId,
+        // FIX: Remove strict 1.0 lock so multiple manual syncs can trigger re-analysis
+        idempotencyKey: `analyze:${contentId}:1.0:${dbJob.id}`,
+        input: { contentId }
+      });
+
       await prisma.job.update({
         where: { id: jobId },
         data: {
@@ -379,8 +370,6 @@ export async function processJob(job, token) {
             for (const item of res.data) {
               const breakdownDef = config.breakdown || 'none';
 
-              // Prevent duplication bug: if we requested a breakdown but Meta 
-              // returned empty breakdowns (e.g., due to privacy thresholds), skip it.
               if (config.breakdown && (!item.breakdowns || item.breakdowns.length === 0)) {
                 continue;
               }
@@ -403,7 +392,6 @@ export async function processJob(job, token) {
             }
           }
         } catch (err) {
-          // Log individual failure but don't fail the entire job
           console.error(`[Worker] Failed fetching account metric ${config.metric} / ${config.period}:`, err.message);
           partialFailure = true;
           await prisma.jobLog.create({
@@ -536,28 +524,21 @@ export async function processJob(job, token) {
     }
   } catch (error) {
     console.error(`[Worker] Job ${jobId} failed:`, error.message);
-    // 4. Mark FAILED
-    const maxAttempts = job.opts?.attempts || 1;
+
+    const maxAttempts = job.opts?.attempts || 3; // Ensure jobs have at least 3 attempts
     const currentAttempt = Math.max(job.attemptsMade + 1, dbJob?.attempts || 1);
-    const willRetry = currentAttempt < maxAttempts;
+
+    // A job will retry if it hasn't hit max attempts AND the error isn't explicitly fatal.
+    // If the error has a retryable flag, or is a generic error, we try again.
+    const willRetry = currentAttempt < maxAttempts && (error.retryable !== false);
 
     if (dbJob.type === 'ANALYZE_CONTENT' && !willRetry) {
       const { contentId } = input;
       if (contentId) {
         await prisma.content.update({
           where: { id: contentId },
-          data: { analysisStatus: 'PARTIAL' }
-        }).catch(e => console.error('Failed to update content to PARTIAL:', e.message));
-
-        await prisma.contentAnalysis.create({
-          data: {
-            contentId,
-            version: '1.0',
-            status: 'PARTIAL',
-            confidence: 0,
-            providerMeta: { error: error.message }
-          }
-        }).catch(e => console.error('Failed to create PARTIAL analysis record:', e.message));
+          data: { analysisStatus: 'FAILED' }
+        }).catch(e => console.error('Failed to update content to FAILED:', e.message));
       }
     }
 
@@ -566,14 +547,13 @@ export async function processJob(job, token) {
       data: {
         state: willRetry ? 'RETRY_PENDING' : 'FAILED',
         completedAt: willRetry ? null : new Date(),
-        error: { code: error.code || 'PROCESSING_FAILED' },
-        progressStep: willRetry ? 'Retry pending' : 'Failed',
-        progressMessage: willRetry ? 'Retrying connection shortly' : 'Connection could not be completed',
-        logs: { create: { event: 'PROCESSING_FAILED', level: 'ERROR', context: { code: error.code || 'PROCESSING_FAILED' } } }
+        error: { code: error.code || 'PROCESSING_FAILED', details: error.message },
+        progressStep: willRetry ? `Retry pending (Attempt ${currentAttempt}/${maxAttempts})` : 'Failed',
+        progressMessage: willRetry ? 'Temporary error, retrying shortly...' : 'Failed permanently.',
+        logs: { create: { event: 'PROCESSING_FAILED', level: 'ERROR', context: { code: error.code || 'PROCESSING_FAILED', msg: error.message } } }
       }
     });
 
-    // Notify root job of failure/retry state change so progress un-sticks
     if (dbJob && dbJob.parentJobId) {
       try {
         const parentJob = await prisma.job.findUnique({ where: { id: dbJob.parentJobId } });
@@ -581,16 +561,16 @@ export async function processJob(job, token) {
           const rootJobId = parentJob.parentJobId ? parentJob.parentJobId : dbJob.parentJobId;
           await updateSyncProgress(rootJobId);
         }
-      } catch (progressErr) {
-        console.error(`[Worker] Failed to update sync progress after job ${jobId} failure:`, progressErr.message);
-      }
+      } catch (progressErr) { }
     }
 
-    const retryAfterSec = parseFloat(error.retryAfter);
-    if (willRetry && Number.isFinite(retryAfterSec) && retryAfterSec > 0) {
+    // Use retryAfter if the AI Provider gave us one, otherwise default to a short backoff
+    const retryAfterSec = parseFloat(error.retryAfter) || (willRetry ? 15 : 0);
+
+    if (willRetry && retryAfterSec > 0) {
       const delayMs = Math.ceil(retryAfterSec * 1000);
       const delayedTimestamp = Date.now() + delayMs;
-      console.log(`[Worker] Delaying retry for ${retryAfterSec}s (until ${new Date(delayedTimestamp).toISOString()}) due to Retry-After header.`);
+      console.log(`[Worker] Delaying retry for ${retryAfterSec}s (until ${new Date(delayedTimestamp).toISOString()}).`);
       await job.moveToDelayed(delayedTimestamp, workerToken);
       throw new DelayedError();
     }
@@ -601,10 +581,9 @@ export async function processJob(job, token) {
       throw unrecoverable;
     }
 
-    throw error; // Let BullMQ know it failed for retry mechanics
+    throw error;
   }
 }
-
 export const worker = new Worker('klarix-sync', processJob, { connection });
 
 worker.on('failed', (job, err) => {

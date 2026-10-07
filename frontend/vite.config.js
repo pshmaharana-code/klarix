@@ -16,7 +16,7 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true
         }
       },
-      allowedHosts: ['come-handheld-pennsylvania-containing.trycloudflare.com']
+      allowedHosts: ['jeffry-semipneumatical-stacy.ngrok-free.dev']
     }
   }
 })
