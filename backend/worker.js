@@ -242,15 +242,7 @@ export async function processJob(job, token) {
         }
       });
 
-      // Auto-trigger Strategy Generation now that memory is updated
-      await createAndEnqueueJob({
-        brandId,
-        type: 'GENERATE_STRATEGY',
-        parentJobId: dbJob.parentJobId || dbJob.id,
-        idempotencyKey: `strategy:${brandId}:${Date.now()}`,
-        input: {}
-      });
-
+      // CHAIN BROKEN HERE: Strategy must now be triggered manually via API
       return { success: true, ...memoryResult };
 
     } else if (dbJob.type === 'GENERATE_STRATEGY') {
@@ -293,17 +285,7 @@ export async function processJob(job, token) {
         }
       });
 
-      // Auto-trigger Script Generation for all newly generated ideas
-      for (const ideaId of ideaResult.ideaIds) {
-        await createAndEnqueueJob({
-          brandId,
-          type: 'GENERATE_SCRIPT',
-          parentJobId: dbJob.parentJobId || dbJob.id,
-          idempotencyKey: `script:${ideaId}:${Date.now()}`,
-          input: { contentIdeaId: ideaId }
-        });
-      }
-
+      // CHAIN BROKEN HERE: Scripts must now be explicitly requested by the user per-idea
       return { success: true, ...ideaResult };
 
     } else if (dbJob.type === 'GENERATE_SCRIPT') {
