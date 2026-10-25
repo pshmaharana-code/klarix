@@ -14,6 +14,7 @@ import { discoverPatterns } from './services/patternService.js';
 import { updateMemory } from './services/memoryService.js';
 import { generateStrategy } from './services/strategyService.js';
 import { generateContentIdeas } from './services/ideaService.js';
+import { generateScript } from './services/scriptService.js';
 
 const prisma = new PrismaClient();
 
@@ -292,7 +293,35 @@ export async function processJob(job, token) {
         }
       });
 
+      // Auto-trigger Script Generation for all newly generated ideas
+      for (const ideaId of ideaResult.ideaIds) {
+        await createAndEnqueueJob({
+          brandId,
+          type: 'GENERATE_SCRIPT',
+          parentJobId: dbJob.parentJobId || dbJob.id,
+          idempotencyKey: `script:${ideaId}:${Date.now()}`,
+          input: { contentIdeaId: ideaId }
+        });
+      }
+
       return { success: true, ...ideaResult };
+
+    } else if (dbJob.type === 'GENERATE_SCRIPT') {
+      console.log(`[Worker] Entering GENERATE_SCRIPT block...`);
+      await updateProgress(jobId, 95, 'Writing Script', 'Drafting production-ready asset...');
+
+      if (!input.contentIdeaId) throw new Error('Missing contentIdeaId for script generation');
+      const scriptResult = await generateScript(brandId, input.contentIdeaId);
+
+      await prisma.job.update({
+        where: { id: jobId },
+        data: {
+          state: 'COMPLETED', progressPercent: 100, progressStep: 'Complete', completedAt: new Date(),
+          result: { scriptId: scriptResult.scriptId }
+        }
+      });
+
+      return { success: true, ...scriptResult };
 
     } else if (dbJob.type === 'ANALYZE_CONTENT') {
       const { contentId } = input;
