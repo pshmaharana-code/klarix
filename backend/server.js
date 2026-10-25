@@ -17,6 +17,8 @@ import jobsRouter from './routes/v2/jobs.js'
 import { brandContentRouter, globalContentRouter } from './routes/v2/content.js'
 import { brandPatternsRouter, patternDetailRouter } from './routes/v2/patterns.js'
 import { requireAuth } from './middleware/auth.js'
+import strategyRoutes from './routes/v2/strategy.js';
+import ideaRoutes from './routes/v2/ideas.js';
 
 dotenv.config()
 
@@ -45,6 +47,10 @@ app.use('/api/v2/brands/:brandId/content', requireAuth, brandContentRouter)
 app.use('/api/v2/brands/:brandId/patterns', requireAuth, brandPatternsRouter)
 app.use('/api/v2/patterns', requireAuth, patternDetailRouter)
 app.use('/api/v2/content', requireAuth, globalContentRouter)
+app.use('/api/v2/brands/:brandId/strategy', strategyRoutes);
+// We mount ideas differently to support /api/v2/brands/:brandId/ideas/generate
+app.use('/api/v2/brands/:brandId', strategyRoutes);
+app.use('/api/v2/ideas', ideaRoutes);
 
 // Configure Multer in-memory upload handler (up to 60MB for video content)
 const upload = multer({
@@ -148,7 +154,7 @@ app.post('/api/ingest-url', async (req, res) => {
     if (!url) {
       return res.status(400).json({ success: false, error: "Please provide a valid Instagram Reel or Post URL." })
     }
-    
+
     const jobId = "job_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7)
     console.log(`\n======================================================`)
     console.log(`[Klarix API] Sleight-of-Hand URL Ingestion triggered: ${url} (Job ID: ${jobId})`)
@@ -178,19 +184,19 @@ app.post('/api/ingest-url', async (req, res) => {
           job.mediaContext = mediaContext
           job.status = 'node_1_running'
         }
-        
+
         console.log(`[Job ${jobId}] Executing Node 1 (Visual Analyst & Audio Speech Transcript) in parallel background...`)
         const diagnosis = await runVisualAnalyst({
           mediaInfo: mediaContext.mediaInfo,
           transcript: mediaContext.caption,
-          analytics: { 
+          analytics: {
             note: "Private numeric metrics (views, watch time, saves) will be provided in Step 3 via UI modal. Focus strictly on visual hook strength, structural editing cuts, typography overlays, and spoken script pacing without mentioning view counts.",
             platform: 'Instagram',
             contentType: contentType || 'Reel'
           },
           brandContext: "Creator seeking retention optimization and algorithmic velocity."
         })
-        
+
         if (job) {
           job.diagnosis = diagnosis
           job.status = 'node_1_complete'
@@ -232,7 +238,7 @@ app.post('/api/complete-analysis', async (req, res) => {
     while (job.status !== 'node_1_complete' && job.status !== 'error' && waited < 20000) {
       await new Promise(r => setTimeout(r, 500))
       waited += 500
-      console.log(`[Job ${jobId}] Waiting for Node 1 to finish background execution (${waited/1000}s)...`)
+      console.log(`[Job ${jobId}] Waiting for Node 1 to finish background execution (${waited / 1000}s)...`)
     }
 
     if (!job.diagnosis) {
