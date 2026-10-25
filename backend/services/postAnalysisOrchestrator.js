@@ -4,7 +4,7 @@ import { callAgent } from './openRouterClient.js';
 const CURRENT_YEAR = new Date().getFullYear();
 
 // -----------------------------------------------------------------------------
-// V2 Visual Analyst
+// V2 Visual Analyst (The Creative Director)
 // -----------------------------------------------------------------------------
 const visualSchema = z.object({
   extracted_visual_text: z.array(z.string()).default([]),
@@ -13,15 +13,16 @@ const visualSchema = z.object({
   format_classification: z.string().optional()
 });
 
-const VISUAL_SYSTEM_PROMPT = `You are a visual analyst for social media content.
-Your responsibility is strictly to analyse observable creative properties. 
-If analyzing a carousel or video, synthesize the analysis across the entire sequence (e.g. across all slides or the entire video timeline), ensuring important slide/frame-specific details are combined coherently.
+const VISUAL_SYSTEM_PROMPT = `You are an elite creative director and visual strategist for high-leverage personal brands.
+Your job is to deconstruct visual psychology, pattern interrupts, and aesthetic leverage.
+Write with ruthless, executive-level precision. Zero fluff. Zero generic praise. Be direct and analytical.
+If analyzing a carousel or video, synthesize the analysis across the entire sequence.
 Return ONLY valid JSON conforming to this schema, with no preamble:
 {
-  "extracted_visual_text": ["array of text strings visibly on screen across the sequence"],
-  "visual_quality": "1-2 sentences on lighting, framing, text overlays, cuts and pacing",
-  "hook_strength": "1-2 sentences on the visual hook strength of the first 3 seconds or first slide",
-  "format_classification": "e.g., 'talking head', 'vlog', 'text-on-screen', 'product shot'"
+  "extracted_visual_text": ["array of exact text strings visibly on screen"],
+  "visual_quality": "1-2 punchy sentences evaluating aesthetic positioning, lighting, typographic hierarchy, and perceived authority.",
+  "hook_strength": "1-2 sentences deconstructing the first 3 seconds or slide. Identify the visual anchor. Does it stop the scroll? Why?",
+  "format_classification": "e.g., 'Direct-to-camera authority vlog', 'Cinematic B-roll with kinetic typography', 'High-contrast text carousel'"
 }
 Do not hallucinate text or describe audio.`;
 
@@ -50,12 +51,12 @@ export async function runVisualAnalyst(brandContext, content, mediaPayload) {
       })
     }
   ];
-  const result = await callAgent(VISUAL_SYSTEM_PROMPT, userMessage, true);
+  const result = await callAgent(VISUAL_SYSTEM_PROMPT, userMessage);
   return { ...visualSchema.parse(result.data), _model: result.model };
 }
 
 // -----------------------------------------------------------------------------
-// V2 Content Analyst
+// V2 Content Analyst (The Behavioral Copywriter)
 // -----------------------------------------------------------------------------
 const contentSchema = z.object({
   themes: z.array(z.string()).default([]),
@@ -64,14 +65,15 @@ const contentSchema = z.object({
   audience_signals: z.array(z.string()).default([])
 });
 
-const CONTENT_SYSTEM_PROMPT = `You are a content analyst for social media.
-Your responsibility is to classify what the content says and how it communicates.
+const CONTENT_SYSTEM_PROMPT = `You are a master behavioral copywriter and brand strategist.
+Your job is to classify psychological leverage, narrative tension, and status signaling.
+Write with cut-throat, analytical precision. Identify the exact frameworks being used.
 Return ONLY valid JSON conforming to this schema, with no preamble:
 {
-  "themes": ["array of 1-3 core topics discussed"],
-  "narrative_structure": "1-2 sentences describing the storytelling or logical flow",
-  "cta_type": "The call to action, if any",
-  "audience_signals": ["array of signals indicating who this is for"]
+  "themes": ["array of 1-3 core psychological or business pillars"],
+  "narrative_structure": "1-2 sentences deconstructing the framework (e.g., Problem-Agitate-Solve, Hero's Journey, Curiosity Gap, Status Play) and pacing.",
+  "cta_type": "Classify the CTA (e.g., 'Implicit status flex', 'Explicit lead capture', 'Value-driven engagement bait', or 'Missing/Weak')",
+  "audience_signals": ["array of signals indicating exactly who this attracts and who it alienates"]
 }`;
 
 export async function runContentAnalyst(brandContext, content) {
@@ -85,12 +87,12 @@ export async function runContentAnalyst(brandContext, content) {
       })
     }
   ];
-  const result = await callAgent(CONTENT_SYSTEM_PROMPT, userMessage, true);
+  const result = await callAgent(CONTENT_SYSTEM_PROMPT, userMessage);
   return { ...contentSchema.parse(result.data), _model: result.model };
 }
 
 // -----------------------------------------------------------------------------
-// V2 Performance Analyst
+// V2 Performance Analyst (The Growth Hacker)
 // -----------------------------------------------------------------------------
 const performanceSchema = z.object({
   metric_interpretation: z.string().optional(),
@@ -98,14 +100,15 @@ const performanceSchema = z.object({
   retention_estimate: z.string().optional()
 });
 
-const PERFORMANCE_SYSTEM_PROMPT = `You are a performance analyst.
+const PERFORMANCE_SYSTEM_PROMPT = `You are a cut-throat growth strategist and data analyst. 
 The current year is ${CURRENT_YEAR}.
-Your responsibility is to interpret performance metrics without claiming causality beyond evidence.
+Your job is to diagnose bottlenecks in the attention funnel and interpret metrics as behavioral data.
+Deliver sharp, executive-level insights. Do not just read the numbers back—diagnose the mechanism of action.
 Return ONLY valid JSON conforming to this schema, with no preamble:
 {
-  "metric_interpretation": "1-2 sentences interpreting the raw metrics in context of the brand",
-  "performance_factors": ["array of 1-3 factual observations about what drove the numbers"],
-  "retention_estimate": "estimated viewer retention based on plays vs interactions"
+  "metric_interpretation": "1-2 punchy sentences synthesizing the funnel. Is there a discrepancy between reach and interaction? Why?",
+  "performance_factors": ["array of 1-3 factual observations about conversion bottlenecks or viral drivers"],
+  "retention_estimate": "Infer viewer drop-off or engagement depth based strictly on the ratio of plays to interactions/watch time."
 }`;
 
 export async function runPerformanceAnalyst(brandContext, content, metrics) {
@@ -118,7 +121,7 @@ export async function runPerformanceAnalyst(brandContext, content, metrics) {
       })
     }
   ];
-  const result = await callAgent(PERFORMANCE_SYSTEM_PROMPT, userMessage, true);
+  const result = await callAgent(PERFORMANCE_SYSTEM_PROMPT, userMessage);
   return { ...performanceSchema.parse(result.data), _model: result.model };
 }
 
@@ -127,8 +130,7 @@ export async function runPerformanceAnalyst(brandContext, content, metrics) {
 // -----------------------------------------------------------------------------
 export async function analyzePost(brandContext, content, metrics, mediaPayload) {
   console.log(`[Orchestrator] Starting analysis for content ${content?.id}`);
-  
-  // Run all 3 agents in parallel (or sequential if preferred, parallel is faster)
+
   const runAndCatch = async (agentPromise) => {
     try {
       return await agentPromise;
@@ -157,7 +159,7 @@ export async function analyzePost(brandContext, content, metrics, mediaPayload) 
   if (!visualFindings._error) successes++;
   if (!contentFindings._error) successes++;
   if (!perfFindings._error) successes++;
-  
+
   const confidence = successes / 3.0;
   const status = successes === 3 ? 'COMPLETED' : 'PARTIAL';
 
@@ -169,7 +171,7 @@ export async function analyzePost(brandContext, content, metrics, mediaPayload) 
   const primaryModelUsed = models.length > 0 ? models[0] : "unknown";
 
   return {
-    version: "1.0",
+    version: "1.1", // Bumped version to differentiate the new prompt logic in the DB
     status,
     visualFindings: visualFindings._error ? { error: visualFindings._error } : visualFindings,
     contentFindings: contentFindings._error ? { error: contentFindings._error } : contentFindings,

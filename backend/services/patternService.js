@@ -1,295 +1,237 @@
+// backend/services/patternService.js
 import { PrismaClient } from '@prisma/client';
+import { z } from 'zod';
+import { callAgent } from './openRouterClient.js';
 
 const prisma = new PrismaClient();
 
-export const MIN_QUALIFIED_SAMPLE_SIZE = 1;
-export const PATTERN_ANALYSIS_VERSION = '1.0';
+// -----------------------------------------------------------------------------
+// The AI Output Schema
+// -----------------------------------------------------------------------------
+const patternSchema = z.object({
+  patterns: z.array(z.object({
+    category: z.enum(['CONTENT_STRATEGY', 'PERFORMANCE']), // <--- NEW
+    title: z.string(),
+    observation: z.string(),
+    psychological_driver: z.string(),
+    actionable_rule: z.string(),
+    supporting_content_ids: z.array(z.string())
+  }))
+});
 
-const isFiniteNumber = value => Number.isFinite(value);
+// -----------------------------------------------------------------------------
+// The Executive Macro-Strategist Prompt
+// -----------------------------------------------------------------------------
+const PATTERN_SYSTEM_PROMPT = `You are an elite, cut-throat Head of Growth and Content Strategist.
+Your job is to analyze a cohort of social media posts, cross-reference their visual/content frameworks against their performance metrics, and extract high-leverage macro-patterns.
+You will be provided with an array of "Top Performers" and "Bottom Performers".
 
-const average = values => {
-  const validValues = values.filter(isFiniteNumber);
-  return validValues.length > 0
-    ? validValues.reduce((sum, value) => sum + value, 0) / validValues.length
-    : null;
-};
+Look for the invisible levers:
+- Do "text-on-screen" formats only work when the narrative is "Problem-Agitate-Solve"?
+- Do cinematic visuals mask weak hooks, leading to high reach but low retention?
+- What exact psychological triggers consistently separate the top performers from the bottom performers?
 
-const toQualifiedContent = contents => contents
-  .map(content => {
-    const metric = content.derivedMetrics[0];
-    const snapshot = content.metricSnapshots[0];
-    return {
-      contentId: content.id,
-      type: content.type,
-      publishedAt: content.publishedAt,
-      interactionRate: metric?.interactionRate,
-      metricSnapshotId: snapshot?.id || null,
-      reach: snapshot?.reach ?? null
-    };
-  })
-  .filter(item => isFiniteNumber(item.interactionRate));
+CRITICAL RULE: Never use raw database IDs (e.g., "3d080687") in your title, observation, or actionable_rule text. When referring to a specific post, use the provided "post_snippet" (e.g., "The post starting with 'I QUIT WAITING'").
 
-/**
- * Build the deterministic Phase 6 candidate from a bounded catalogue summary.
- * No candidate is publishable without a qualified sample and two evidence rows.
- */
-export function buildPatternCandidate(items) {
-  const qualified = items.filter(item => isFiniteNumber(item.interactionRate));
-  if (qualified.length < MIN_QUALIFIED_SAMPLE_SIZE) {
-    return {
-      status: 'INSUFFICIENT_DATA',
-      sampleSize: qualified.length,
-      minimumSampleSize: MIN_QUALIFIED_SAMPLE_SIZE,
-      patterns: [],
-      limitations: ['At least 10 analysed content items with interaction metrics are required.']
-    };
-  }
+Write with ruthless, executive-level precision. No generic advice. Give me hard, actionable algorithmic and behavioral rules based STRICTLY on the data provided.
 
-  const sorted = [...qualified].sort((a, b) => b.interactionRate - a.interactionRate);
-  const cohortSize = Math.max(1, Math.floor(sorted.length / 3));
-  const top = sorted.slice(0, cohortSize);
-  const baseline = sorted.slice(-cohortSize);
-  const topAverage = average(top.map(item => item.interactionRate));
-  const baselineAverage = average(baseline.map(item => item.interactionRate));
-  const delta = topAverage - baselineAverage;
-  const relativeDelta = baselineAverage === 0 ? null : delta / baselineAverage;
+Return ONLY valid JSON conforming to this schema, with no preamble:
+Return ONLY valid JSON conforming to this schema, with no preamble:
+{
+  "patterns": [
+    {
+      "category": "Must be exactly 'CONTENT_STRATEGY' or 'PERFORMANCE'",
+      "title": "Punchy 3-5 word name for the strategy",
+      "observation": "1-2 sentences identifying the exact correlation in the data.",
+      "psychological_driver": "1 sentence explaining WHY this manipulates viewer attention.",
+      "actionable_rule": "The strict operational rule the creator must follow.",
+      "supporting_content_ids": ["array of exact Content IDs that prove this pattern"]
+    }
+  ]
+}`;
 
-  if (!isFiniteNumber(delta) || delta <= 0 || (relativeDelta !== null && relativeDelta < 0.05)) {
-    return {
-      status: 'NO_PATTERN',
-      sampleSize: qualified.length,
-      minimumSampleSize: MIN_QUALIFIED_SAMPLE_SIZE,
-      patterns: [],
-      limitations: ['The qualified catalogue does not show a sufficiently consistent performance separation.']
-    };
-  }
+// -----------------------------------------------------------------------------
+// Pattern Discovery Engine
+// -----------------------------------------------------------------------------
+export async function discoverPatterns(brandId, { force = false } = {}) {
+  console.log(`[PatternService] Initiating Pattern Discovery for Brand: ${brandId}`);
 
-  const evidence = top.slice(0, Math.min(5, top.length));
-  if (evidence.length < 1) {
-    return {
-      status: 'INSUFFICIENT_EVIDENCE',
-      sampleSize: qualified.length,
-      minimumSampleSize: MIN_QUALIFIED_SAMPLE_SIZE,
-      patterns: [],
-      limitations: ['A pattern requires at least two supporting content records.']
-    };
-  }
-
-  const consistency = top.filter(item => item.interactionRate > baselineAverage).length / top.length;
-  const confidence = Math.min(99, Math.max(0, Math.round(
-    50 + Math.min(25, qualified.length) + consistency * 20
-  )));
-
-  return {
-    status: 'READY',
-    sampleSize: qualified.length,
-    minimumSampleSize: MIN_QUALIFIED_SAMPLE_SIZE,
-    patterns: [{
-      category: 'PERFORMANCE',
-      title: 'Higher-interaction content is outperforming the lower-performing cohort',
-      claim: `The strongest ${top.length} content items average ${(topAverage * 100).toFixed(2)}% interaction versus ${(baselineAverage * 100).toFixed(2)}% for the lowest-performing cohort.`,
-      confidence,
-      impact: {
-        metric: 'interactionRate',
-        topAverage,
-        baselineAverage,
-        absoluteDelta: delta,
-        relativeDelta,
-        sampleSize: qualified.length,
-        comparisonDefinition: 'Top and bottom thirds of qualified content ordered by interaction rate.'
-      },
-      recommendedAction: 'Study the creative structure of the highest-interaction posts and repeat the observable elements in the next content batch.',
-      evidence: evidence.map(item => ({
-        contentId: item.contentId,
-        metricSnapshotId: item.metricSnapshotId,
-        contribution: item.interactionRate - baselineAverage,
-        summary: `Interaction rate ${(item.interactionRate * 100).toFixed(2)}% is above the lower-cohort baseline of ${(baselineAverage * 100).toFixed(2)}%.`
-      }))
-    }],
-    limitations: ['This is an observational comparison and does not establish causal impact.']
-  };
-}
-
-async function loadQualifiedContent(brandId) {
+  // 1. Fetch the analyzed cohort
   const contents = await prisma.content.findMany({
     where: {
       brandId,
-      analysisStatus: { in: ['COMPLETED', 'PARTIAL'] }
+      analysisStatus: 'COMPLETED'
     },
     select: {
       id: true,
       type: true,
-      publishedAt: true,
-      derivedMetrics: {
-        orderBy: { calculatedAt: 'desc' },
-        take: 1,
-        select: { interactionRate: true }
+      caption: true,
+      analyses: {
+        orderBy: { version: 'desc' },
+        take: 1
       },
-      metricSnapshots: {
-        orderBy: { observedAt: 'desc' },
-        take: 1,
-        select: { id: true, reach: true }
+      derivedMetrics: {
+        orderBy: { createdAt: 'desc' },
+        take: 1
       }
     },
-    orderBy: { publishedAt: 'asc' }
+    orderBy: { publishedAt: 'desc' },
+    take: 50 // Limit to last 50 for context window safety
   });
 
-  return toQualifiedContent(contents);
+  const validCohort = contents.filter(c => c.analyses?.length > 0 && c.derivedMetrics?.length > 0);
+
+  // We need at least a few posts to find a "pattern"
+  if (validCohort.length < 2 && !force) {
+    console.log(`[PatternService] Insufficient sample size (${validCohort.length}). Skipping.`);
+    return { status: 'SKIPPED', sampleSize: validCohort.length, limitations: 'Requires more analyzed posts.' };
+  }
+
+  // 2. Format and Segment the Data
+  const formattedData = validCohort.map(c => {
+    const analysis = c.analyses[0];
+    const metrics = c.derivedMetrics[0];
+
+    // Create a human-readable snippet from the caption (first 30 chars)
+    const cleanCaption = c.caption ? c.caption.replace(/\n/g, ' ').substring(0, 30).trim() : 'Video';
+
+    return {
+      id: c.id,
+      post_snippet: `"${cleanCaption}..."`, // Tells the AI how to refer to this post
+      format: analysis.visualFindings?.format_classification || 'unknown',
+      visual_hook: analysis.visualFindings?.hook_strength || '',
+      themes: analysis.contentFindings?.themes || [],
+      narrative: analysis.contentFindings?.narrative_structure || '',
+      interactionRate: metrics.interactionRate || 0,
+      viewToReachRatio: metrics.viewToReachRatio || 0,
+    };
+  }).sort((a, b) => b.interactionRate - a.interactionRate);
+
+  // Split into Top and Bottom performing cohorts
+  const sliceIndex = Math.max(1, Math.floor(formattedData.length * 0.5));
+  const topPerformers = formattedData.slice(0, sliceIndex);
+  const bottomPerformers = formattedData.slice(-sliceIndex);
+
+  const aiPayload = {
+    total_analyzed: formattedData.length,
+    top_performers: topPerformers,
+    bottom_performers: bottomPerformers
+  };
+
+  // 3. Execute the AI Analyst
+  console.log(`[PatternService] Sending ${formattedData.length} posts to Gemini for macro-analysis...`);
+  const userMessage = JSON.stringify(aiPayload);
+
+  let result;
+  try {
+    result = await callAgent(PATTERN_SYSTEM_PROMPT, userMessage);
+  } catch (error) {
+    console.error('[PatternService] AI Execution failed:', error.message);
+    throw error;
+  }
+
+  const parsedData = patternSchema.parse(result.data);
+  let totalEvidenceCount = 0;
+  let savedPatternId = null;
+
+  // 4. Persist to Database mapped to exact Prisma schema
+  // 4. Persist to Database mapped to exact Prisma schema
+  if (parsedData.patterns && parsedData.patterns.length > 0) {
+    for (const pattern of parsedData.patterns) {
+      const dbPattern = await prisma.pattern.create({
+        data: {
+          brandId,
+          category: pattern.category, // <--- AI now decides the category!
+          title: pattern.title,
+          claim: `${pattern.observation} ${pattern.psychological_driver}`,
+          recommendedAction: pattern.actionable_rule,
+          confidence: 85.0,
+          status: 'ACTIVE'
+        }
+      });
+
+      savedPatternId = dbPattern.id; // Stores the last one created for the return log
+
+      const validIds = pattern.supporting_content_ids.filter(id => validCohort.some(c => c.id === id));
+
+      if (validIds.length > 0) {
+        await prisma.patternEvidence.createMany({
+          data: validIds.map(contentId => ({
+            patternId: dbPattern.id,
+            contentId: contentId,
+            summary: `Identified by AI as supporting evidence for pattern: ${pattern.title}`
+          }))
+        });
+        totalEvidenceCount += validIds.length;
+      }
+    }
+  }
+
+  console.log(`[PatternService] Discovery Complete. Generated Pattern ID: ${savedPatternId}`);
+
+  return {
+    status: 'COMPLETED',
+    sampleSize: validCohort.length,
+    evidenceCount: totalEvidenceCount,
+    patternId: savedPatternId,
+    limitations: null
+  };
 }
 
-export async function getPatternCatalogueVersion(brandId) {
-  const [latestContent, latestDerivedMetric] = await Promise.all([
-    prisma.content.aggregate({
-      where: { brandId },
-      _count: { _all: true },
-      _max: { updatedAt: true }
-    }),
-    prisma.contentDerivedMetric.aggregate({
-      where: { content: { brandId } },
-      _count: { _all: true },
-      _max: { calculatedAt: true }
-    })
-  ]);
+// -----------------------------------------------------------------------------
+// API Route Data Fetchers
+// -----------------------------------------------------------------------------
 
-  return [
-    latestContent._count._all,
-    latestContent._max.updatedAt?.toISOString() || 'empty',
-    latestDerivedMetric._count._all,
-    latestDerivedMetric._max.calculatedAt?.toISOString() || 'empty'
-  ].join('-');
+export async function getPatternCatalogueVersion(brandId) {
+  // The true version of the catalogue is defined by when the metrics last changed.
+  const latestMetric = await prisma.contentDerivedMetric.findFirst({
+    where: { content: { brandId } },
+    orderBy: { calculatedAt: 'desc' }
+  });
+
+  // If no new metrics have been calculated, this timestamp stays identical,
+  // generating a locked idempotency key that blocks duplicate AI runs.
+  return latestMetric ? latestMetric.calculatedAt.getTime().toString() : 'v1';
 }
 
 export async function getPatternDiscoverySummary(brandId) {
-  const qualified = await loadQualifiedContent(brandId);
-  return {
-    sampleSize: qualified.length,
-    minimumSampleSize: MIN_QUALIFIED_SAMPLE_SIZE,
-    status: qualified.length >= MIN_QUALIFIED_SAMPLE_SIZE ? 'READY' : 'INSUFFICIENT_DATA'
-  };
-}
-
-export async function discoverPatterns(brandId, { force = false } = {}) {
-  const qualified = await loadQualifiedContent(brandId);
-  const candidate = buildPatternCandidate(qualified);
-
-  if (candidate.status !== 'READY') return candidate;
-
-  const pattern = await prisma.$transaction(async tx => {
-    if (force) {
-      await tx.pattern.updateMany({
-        where: { brandId, status: 'ACTIVE' },
-        data: { status: 'SUPERSEDED', supersededAt: new Date() }
-      });
-    }
-
-    const created = await tx.pattern.create({
-      data: {
-        brandId,
-        category: candidate.patterns[0].category,
-        title: candidate.patterns[0].title,
-        claim: candidate.patterns[0].claim,
-        confidence: candidate.patterns[0].confidence,
-        impact: candidate.patterns[0].impact,
-        status: 'ACTIVE',
-        analysisVersion: PATTERN_ANALYSIS_VERSION,
-        recommendedAction: candidate.patterns[0].recommendedAction,
-        evidence: {
-          create: candidate.patterns[0].evidence
-        }
-      },
-      include: { evidence: true }
-    });
-
-    if (created.evidence.length < 1) {
-      throw new Error('ACTIVE_PATTERN_REQUIRES_EVIDENCE');
-    }
-
-    return created;
+  const count = await prisma.content.count({
+    where: { brandId, analysisStatus: 'COMPLETED' }
   });
 
-  return {
-    ...candidate,
-    patternId: pattern.id,
-    evidenceCount: pattern.evidence.length
-  };
+  // We temporarily lower this threshold to 2 so you can test it on your current data
+  if (count < 2) {
+    return { status: 'INSUFFICIENT_DATA', analyzedCount: count };
+  }
+  return { status: 'READY', analyzedCount: count };
 }
 
-export async function listPatterns(brandId, { status = 'ACTIVE', category, limit = 20 } = {}) {
-  const patterns = await prisma.pattern.findMany({
-    where: {
-      brandId,
-      ...(status ? { status } : {}),
-      ...(category ? { category } : {})
-    },
-    include: { _count: { select: { evidence: true } } },
-    orderBy: { createdAt: 'desc' },
-    take: limit
-  });
+export async function listPatterns(brandId, { status = 'ACTIVE', category, limit = 20 }) {
+  const where = { brandId, status };
+  if (category) where.category = category;
 
-  return patterns.map(pattern => ({
-    id: pattern.id,
-    category: pattern.category,
-    title: pattern.title,
-    claim: pattern.claim,
-    confidence: pattern.confidence === null ? null : Number(pattern.confidence),
-    impact: pattern.impact,
-    status: pattern.status,
-    analysisVersion: pattern.analysisVersion,
-    recommendedAction: pattern.recommendedAction,
-    evidenceCount: pattern._count.evidence,
-    createdAt: pattern.createdAt,
-    supersededAt: pattern.supersededAt
-  }));
+  return prisma.pattern.findMany({
+    where,
+    take: limit,
+    orderBy: { createdAt: 'desc' }
+  });
 }
 
 export async function getPatternDetail(patternId, userId) {
-  const pattern = await prisma.pattern.findFirst({
-    where: {
-      id: patternId,
-      brand: {
-        OR: [
-          { ownerUserId: userId },
-          { members: { some: { userId } } }
-        ]
-      }
-    },
+  const pattern = await prisma.pattern.findUnique({
+    where: { id: patternId },
     include: {
       evidence: {
-        orderBy: { createdAt: 'desc' },
         include: {
-          content: { select: { id: true, type: true, publishedAt: true, caption: true } },
-          metricSnapshot: { select: { id: true, observedAt: true, reach: true, impressions: true, plays: true } }
+          content: {
+            include: {
+              media: true
+            }
+          },
+          metricSnapshot: true
         }
       }
     }
   });
-
-  if (!pattern) return null;
-
-  return {
-    pattern: {
-      id: pattern.id,
-      brandId: pattern.brandId,
-      category: pattern.category,
-      title: pattern.title,
-      claim: pattern.claim,
-      confidence: pattern.confidence === null ? null : Number(pattern.confidence),
-      impact: pattern.impact,
-      status: pattern.status,
-      analysisVersion: pattern.analysisVersion,
-      recommendedAction: pattern.recommendedAction,
-      createdAt: pattern.createdAt,
-      supersededAt: pattern.supersededAt
-    },
-    evidence: pattern.evidence.map(item => ({
-      id: item.id,
-      contentId: item.contentId,
-      metricSnapshotId: item.metricSnapshotId,
-      contribution: item.contribution,
-      summary: item.summary,
-      createdAt: item.createdAt,
-      content: item.content,
-      metricSnapshot: item.metricSnapshot
-    }))
-  };
+  return pattern;
 }

@@ -15,13 +15,16 @@ datasource db {
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum JobType {
-  SYNC_ACCOUNT // Phase 2 — preserved
-  IMPORT_CONTENT // Phase 3
-  FETCH_METRICS // Phase 3
-  FETCH_ACCOUNT_METRICS // Phase 4A
-  ANALYZE_CONTENT // Phase 4
-  ANALYZE_BATCH // Phase 4
-  DISCOVER_PATTERNS // Phase 6
+  SYNC_ACCOUNT 
+  IMPORT_CONTENT 
+  FETCH_METRICS 
+  FETCH_ACCOUNT_METRICS 
+  ANALYZE_CONTENT 
+  ANALYZE_BATCH 
+  DISCOVER_PATTERNS 
+  UPDATE_MEMORY // Phase 7 addition
+  GENERATE_STRATEGY // Phase 8 addition
+  GENERATE_CONTENT_IDEAS // Phase 9 addition
 }
 
 enum JobState {
@@ -99,6 +102,12 @@ model Brand {
   contents       Content[]
   // Phase 6 addition
   patterns       Pattern[]
+  // Phase 7 addition
+  memoryEntries  BrandMemoryEntry[]
+  // Phase 8 addition
+  strategies     Strategy[]
+  // Phase 9 addition
+  contentIdeas   ContentIdea[]
 
   @@map("brands")
 }
@@ -471,4 +480,76 @@ model PatternEvidence {
   @@index([patternId, createdAt])
   @@index([contentId])
   @@map("pattern_evidence")
+}
+
+
+/// Phase 7: Brand Memory Engine
+model BrandMemoryEntry {
+  id            String    @id @default(uuid())
+  brandId       String    @map("brand_id")
+  domain        String
+  statement     String
+  confidence    Decimal?  @db.Decimal(5, 2)
+  status        String    @default("ACTIVE")
+  provenance    Json?
+  evidence      Json?
+  sourceVersion String?   @map("source_version")
+  validFrom     DateTime? @default(now()) @map("valid_from")
+  validTo       DateTime? @map("valid_to")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId, domain, status])
+  @@map("brand_memory_entries")
+}
+
+
+
+/// Phase 8: Strategy Engine Blueprint
+model Strategy {
+  id                 String   @id @default(uuid())
+  brandId            String   @map("brand_id")
+  status             String   @default("ACTIVE")
+  version            Int      @default(1)
+  objective          String?
+  targetAudience     String?  @map("target_audience")
+  positioning        String?
+  pillars            Json?
+  recommendedFormats Json?    @map("recommended_formats")
+  doList             Json?    @map("do_list")
+  stopList           Json?    @map("stop_list")
+  experiments        Json?
+  successMetrics     Json?    @map("success_metrics")
+  sourceSnapshot     Json?    @map("source_snapshot")
+  generatedAt        DateTime @default(now()) @map("generated_at")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, version])
+  @@map("strategies")
+}
+
+
+
+/// Phase 9: Content Idea Generator
+model ContentIdea {
+  id          String   @id @default(uuid())
+  brandId     String   @map("brand_id")
+  strategyId  String   @map("strategy_id")
+  title       String
+  hook        String
+  pillar      String
+  format      String
+  rationale   String
+  sourceRefs  Json?    @map("source_refs")
+  status      String   @default("DRAFT")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  brand    Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId, status])
+  @@map("content_ideas")
 }

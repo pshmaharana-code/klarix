@@ -2,10 +2,11 @@
 import { Buffer } from 'buffer';
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+const GEMINI_UPLOAD_URL = 'https://generativelanguage.googleapis.com/upload/v1beta/files';
 const PRIMARY_MODEL = 'gemini-3.5-flash-lite'; // Using Native Google directly
 
 /**
- * Helper to detect MIME type from Buffer
+ * Helper to detect MIME type from Buffer (Images & Video)
  */
 function detectMimeType(buffer) {
     if (!buffer || buffer.length < 12) return null;
@@ -16,7 +17,56 @@ function detectMimeType(buffer) {
     const riff = buffer.toString('utf8', 0, 4);
     const webp = buffer.toString('utf8', 8, 12);
     if (riff === 'RIFF' && webp === 'WEBP') return 'image/webp';
-    return 'application/octet-stream'; // Fallback
+
+    // MP4 signature check (ftyp at byte 4)
+    const ftyp = buffer.toString('utf8', 4, 8);
+    if (ftyp === 'ftyp') return 'video/mp4';
+
+    return null; // Fallback
+}
+
+/**
+ * Uploads a heavy video to Gemini's File API and polls until ACTIVE
+ */
+async function uploadAndPollVideo(buffer, mimeType, geminiKey) {
+    console.log(`[AI Provider] Uploading video to Gemini File API (${mimeType}, ${(buffer.length / 1024 / 1024).toFixed(2)} MB)...`);
+
+    // 1. Upload the raw binary
+    const uploadRes = await fetch(`${GEMINI_UPLOAD_URL}?uploadType=media&key=${geminiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': mimeType },
+        body: buffer
+    });
+
+    if (!uploadRes.ok) {
+        const err = await uploadRes.json().catch(() => ({}));
+        throw new Error(`Failed to upload video to Gemini: ${err.error?.message || uploadRes.status}`);
+    }
+
+    const uploadData = await uploadRes.json();
+    const fileUri = uploadData.file.uri;
+    const fileName = uploadData.file.name;
+    let fileState = uploadData.file.state;
+
+    console.log(`[AI Provider] Video uploaded. File: ${fileName}. State: ${fileState}. Polling for processing...`);
+
+    // 2. Poll until ACTIVE (Max 2 minutes / 40 attempts)
+    let attempts = 0;
+    while (fileState === 'PROCESSING' && attempts < 40) {
+        await new Promise(r => setTimeout(r, 3000)); // wait 3 seconds
+        const checkRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${geminiKey}`);
+        if (checkRes.ok) {
+            const checkData = await checkRes.json();
+            fileState = checkData.state;
+        }
+        attempts++;
+    }
+
+    if (fileState === 'FAILED') throw new Error(`Gemini Video Processing Failed for ${fileName}`);
+    if (fileState === 'PROCESSING') throw new Error(`Gemini Video Processing Timed Out after 2 minutes for ${fileName}`);
+
+    console.log(`[AI Provider] Video processing complete. State: ${fileState}. Ready for analysis.`);
+    return fileUri;
 }
 
 /**
@@ -37,52 +87,67 @@ export async function callAgent(systemPrompt, userMessage) {
         for (const item of userMessage) {
             if (item.type === 'image_url' && item.image_url?.url) {
                 try {
-                    // V2 FIX: Fetch the Meta CDN image server-side and convert to base64 inline_data
                     const res = await fetch(item.image_url.url);
                     if (!res.ok) throw new Error(`Failed to fetch media from Meta CDN: ${res.status}`);
 
                     const arrayBuffer = await res.arrayBuffer();
                     const buffer = Buffer.from(arrayBuffer);
-                    const mimeType = detectMimeType(buffer) || 'image/jpeg';
-                    const b64Data = buffer.toString('base64');
 
-                    parts.push({
-                        inline_data: { mime_type: mimeType, data: b64Data }
-                    });
+                    // Determine MIME type (use HTTP header as fallback, then standard fallback)
+                    const headerMime = res.headers.get('content-type');
+                    const detectedMime = detectMimeType(buffer);
+                    const mimeType = detectedMime || (headerMime && headerMime !== 'application/octet-stream' ? headerMime : 'image/jpeg');
+
+                    if (mimeType.startsWith('video/')) {
+                        // V2 FIX: Use Google's File API for Videos to prevent Base64 bloat timeouts
+                        const fileUri = await uploadAndPollVideo(buffer, mimeType, geminiKey);
+                        parts.push({
+                            file_data: { mime_type: mimeType, file_uri: fileUri }
+                        });
+                    } else {
+                        // Keep images as fast Base64 inline_data
+                        const b64Data = buffer.toString('base64');
+                        parts.push({
+                            inline_data: { mime_type: mimeType, data: b64Data }
+                        });
+                    }
                 } catch (e) {
                     console.error(`[AI Provider] Failed to process media URL: ${item.image_url.url}`, e);
-                    // Push a text fallback so the agent doesn't completely fail
-                    parts.push({ text: `[Media missing or expired: ${item.image_url.url}]` });
+                    parts.push({ text: `[Media missing, expired, or failed to process: ${item.image_url.url}]` });
                 }
             } else if (item.type === 'text') {
                 parts.push({ text: item.text });
             }
         }
     } else {
-        // Standard text payload
         parts.push({ text: userMessage });
     }
 
-    // 2. Build the Gemini Native Payload
     const payload = {
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents: [{ role: 'user', parts: parts }],
         generationConfig: {
             maxOutputTokens: 4096,
-            responseMimeType: 'application/json' // Force structured output
+            responseMimeType: 'application/json'
         }
     };
 
-    // 3. Execute Request
+    // 3. Execute Request with a 4-minute Timeout (Extended for Video Processing)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 240000); // 240 seconds
+
     try {
         const response = await fetch(
             `${GEMINI_BASE_URL}/${PRIMARY_MODEL}:generateContent?key=${geminiKey}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
+                signal: controller.signal
             }
         );
+
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
@@ -93,19 +158,26 @@ export async function callAgent(systemPrompt, userMessage) {
         const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
         const cleaned = rawText.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
 
-        // 4. Return the strict V2 Contract
         return {
             data: JSON.parse(cleaned),
             model: PRIMARY_MODEL
         };
 
     } catch (error) {
+        clearTimeout(timeoutId);
+
+        if (error.name === 'AbortError') {
+            console.error(`[AI Provider] V2 Analysis Failed: Gemini API Timeout (Hanging Request)`);
+            const timeoutErr = new Error('Gemini API request timed out after 240 seconds.');
+            timeoutErr.retryable = true;
+            timeoutErr.retryAfter = 15;
+            throw timeoutErr;
+        }
+
         console.error(`[AI Provider] V2 Analysis Failed:`, error.message);
 
-        // V2 FIX: Flag 503 and network errors as retryable so BullMQ tries again later
-        if (error.message.includes('503') || error.message.includes('fetch') || error.message.includes('429')) {
+        if (error.message.includes('503') || error.message.includes('fetch') || error.message.includes('429') || error.message.includes('Timeout')) {
             error.retryable = true;
-            // Add an artificial 30-second delay before the queue tries again
             error.retryAfter = 30;
         }
 
