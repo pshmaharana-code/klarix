@@ -25,6 +25,7 @@ enum JobType {
   UPDATE_MEMORY // Phase 7 addition
   GENERATE_STRATEGY // Phase 8 addition
   GENERATE_CONTENT_IDEAS // Phase 9 addition
+  GENERATE_SCRIPT // Phase 9 addition
 }
 
 enum JobState {
@@ -549,7 +550,31 @@ model ContentIdea {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   brand    Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  // Phase 9 addition
+  scripts  Script[]
 
   @@index([brandId, status])
   @@map("content_ideas")
+}
+
+/// Phase 9: Scriptwriter
+model Script {
+  id                       String   @id @default(uuid())
+  contentIdeaId            String   @map("content_idea_id")
+  version                  Int      @default(1)
+  hook                     String
+  opening                  String
+  body                     String
+  transitions              Json?
+  cta                      String
+  visualDirection          String   @map("visual_direction")
+  estimatedDurationSeconds Int?     @map("estimated_duration_seconds")
+  voiceCheck               Json?    @map("voice_check")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  contentIdea ContentIdea @relation(fields: [contentIdeaId], references: [id], onDelete: Cascade)
+
+  @@unique([contentIdeaId, version])
+  @@map("scripts")
 }
