@@ -40,7 +40,7 @@ Return ONLY valid JSON conforming to this schema, with no preamble:
   "voice_check": { "passed": true, "explanation": "Why this matches the brand constraints" }
 }`;
 
-export async function generateScript(brandId, contentIdeaId) {
+export async function generateScript(brandId, contentIdeaId, userInstruction = null) {
     console.log(`[ScriptService] Initiating Script Generation for Idea: ${contentIdeaId}`);
 
     const idea = await prisma.contentIdea.findUnique({
@@ -67,7 +67,9 @@ export async function generateScript(brandId, contentIdeaId) {
             format: idea.format,
             pillar: idea.pillar,
             rationale: idea.rationale
-        }
+        },
+        // Add the instruction to the payload if it exists
+        user_override_instruction: userInstruction || "None. Follow the strategy strictly."
     };
 
     console.log(`[ScriptService] Sending idea and strategy context to Gemini...`);

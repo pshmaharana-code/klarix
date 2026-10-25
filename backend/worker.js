@@ -275,7 +275,9 @@ export async function processJob(job, token) {
       await updateProgress(jobId, 85, 'Ideating Content', 'Generating specific content concepts from strategy pillars...');
 
       if (!input.strategyId) throw new Error('Missing strategyId for idea generation');
-      const ideaResult = await generateContentIdeas(brandId, input.strategyId);
+
+      // Update this line to pass input.count
+      const ideaResult = await generateContentIdeas(brandId, input.strategyId, input.count);
 
       await prisma.job.update({
         where: { id: jobId },
@@ -285,7 +287,6 @@ export async function processJob(job, token) {
         }
       });
 
-      // CHAIN BROKEN HERE: Scripts must now be explicitly requested by the user per-idea
       return { success: true, ...ideaResult };
 
     } else if (dbJob.type === 'GENERATE_SCRIPT') {
@@ -293,7 +294,9 @@ export async function processJob(job, token) {
       await updateProgress(jobId, 95, 'Writing Script', 'Drafting production-ready asset...');
 
       if (!input.contentIdeaId) throw new Error('Missing contentIdeaId for script generation');
-      const scriptResult = await generateScript(brandId, input.contentIdeaId);
+
+      // Update this line to pass input.instruction (we will modify scriptService next if needed)
+      const scriptResult = await generateScript(brandId, input.contentIdeaId, input.instruction);
 
       await prisma.job.update({
         where: { id: jobId },
