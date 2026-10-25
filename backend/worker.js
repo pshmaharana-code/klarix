@@ -13,6 +13,7 @@ import { calculateDerivedMetrics } from './services/analyticsService.js';
 import { discoverPatterns } from './services/patternService.js';
 import { updateMemory } from './services/memoryService.js';
 import { generateStrategy } from './services/strategyService.js';
+import { generateContentIdeas } from './services/ideaService.js';
 
 const prisma = new PrismaClient();
 
@@ -265,7 +266,33 @@ export async function processJob(job, token) {
         }
       });
 
+      // Auto-trigger Idea Generation now that Strategy is set
+      await createAndEnqueueJob({
+        brandId,
+        type: 'GENERATE_CONTENT_IDEAS',
+        parentJobId: dbJob.parentJobId || dbJob.id,
+        idempotencyKey: `ideas:${strategyResult.strategyId}:${Date.now()}`,
+        input: { strategyId: strategyResult.strategyId }
+      });
+
       return { success: true, ...strategyResult };
+
+    } else if (dbJob.type === 'GENERATE_CONTENT_IDEAS') {
+      console.log(`[Worker] Entering GENERATE_CONTENT_IDEAS block...`);
+      await updateProgress(jobId, 85, 'Ideating Content', 'Generating specific content concepts from strategy pillars...');
+
+      if (!input.strategyId) throw new Error('Missing strategyId for idea generation');
+      const ideaResult = await generateContentIdeas(brandId, input.strategyId);
+
+      await prisma.job.update({
+        where: { id: jobId },
+        data: {
+          state: 'COMPLETED', progressPercent: 100, progressStep: 'Complete', completedAt: new Date(),
+          result: { ideaCount: ideaResult.ideaCount }
+        }
+      });
+
+      return { success: true, ...ideaResult };
 
     } else if (dbJob.type === 'ANALYZE_CONTENT') {
       const { contentId } = input;
