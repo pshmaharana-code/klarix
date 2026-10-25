@@ -16,8 +16,11 @@ const ideaSchema = z.object({
     }))
 });
 
-const IDEA_SYSTEM_PROMPT = `You are an elite Content Ideation Engine.
-Your objective is to read a brand's validated Strategy and their active Brand Memory, and generate 3 highly specific, platform-ready content ideas.
+export async function generateContentIdeas(brandId, strategyId, count = 3) {
+    console.log(`[IdeaService] Initiating Idea Generation for Strategy: ${strategyId}. Requesting ${count} idea(s).`);
+
+    const IDEA_SYSTEM_PROMPT = `You are an elite Content Ideation Engine.
+Your objective is to read a brand's validated Strategy and their active Brand Memory, and generate exactly ${count} highly specific, platform-ready content idea(s).
 
 CRITICAL RULES:
 1. Every idea MUST strictly align with the Strategy's 'pillars' and 'recommended_formats'.
@@ -39,9 +42,6 @@ Return ONLY valid JSON conforming to this schema, with no preamble:
   ]
 }`;
 
-export async function generateContentIdeas(brandId, strategyId) {
-    console.log(`[IdeaService] Initiating Idea Generation for Strategy: ${strategyId}`);
-
     const strategy = await prisma.strategy.findUnique({
         where: { id: strategyId }
     });
@@ -50,7 +50,6 @@ export async function generateContentIdeas(brandId, strategyId) {
         throw new Error('Strategy not found');
     }
 
-    // Pass active memory along so the AI knows the exact source strings/IDs
     const memories = await prisma.brandMemoryEntry.findMany({
         where: { brandId, status: 'ACTIVE' },
         select: { id: true, domain: true, statement: true }
