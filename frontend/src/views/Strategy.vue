@@ -37,7 +37,7 @@
     <div v-else-if="!strategy" class="text-center py-20 bg-gray-900 rounded-xl border border-gray-800">
       <div class="w-16 h-16 bg-gray-800 rounded-full mx-auto flex items-center justify-center mb-4 text-2xl">🧭</div>
       <h3 class="text-xl font-bold mb-2">No Active Strategy</h3>
-      <p class="max-w-xl mx-auto text-gray-400 mb-6">You haven't generated a strategy blueprint for this brand yet. Generate one to start creating high-converting content.</p>
+      <p class="max-w-xl mx-auto text-gray-400 mb-6">You haven't generated a strategy blueprint for this brand yet.</p>
       <button @click="generateStrategy" class="px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors">
         Generate Strategy
       </button>
@@ -48,7 +48,7 @@
       
       <div class="flex items-center justify-between">
         <span class="text-xs bg-gray-800 px-3 py-1 rounded-full text-gray-400 uppercase tracking-wide">Version {{ strategy.version }}</span>
-        <router-link :to="`/strategy/ideas`" class="text-sm font-medium text-blue-400 hover:text-blue-300 flex items-center gap-2">
+        <router-link :to="`/strategy/${strategy.id}/ideas`" class="text-sm font-medium text-blue-400 hover:text-blue-300 flex items-center gap-2 bg-blue-900/20 px-4 py-2 rounded-lg border border-blue-900/50 transition-colors">
           View Content Ideas <span>→</span>
         </router-link>
       </div>
@@ -75,19 +75,27 @@
       <div class="grid md:grid-cols-2 gap-6">
         <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
           <h3 class="text-sm uppercase tracking-widest text-gray-500 font-bold mb-4">Content Pillars</h3>
-          <ul class="space-y-3">
+          <ul class="space-y-4">
             <li v-for="(pillar, idx) in strategy.pillars" :key="idx" class="flex items-start gap-3 text-gray-300">
               <span class="text-blue-500 mt-1">•</span>
-              <span>{{ pillar }}</span>
+              <div v-if="parseJsonItem(pillar).name">
+                <strong class="text-white block mb-1">{{ parseJsonItem(pillar).name }}</strong>
+                <span class="text-sm text-gray-400 leading-relaxed">{{ parseJsonItem(pillar).description || parseJsonItem(pillar).rationale }}</span>
+              </div>
+              <span v-else>{{ pillar }}</span>
             </li>
           </ul>
         </div>
         <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
           <h3 class="text-sm uppercase tracking-widest text-gray-500 font-bold mb-4">Recommended Formats</h3>
-          <div class="flex flex-wrap gap-2">
-            <span v-for="(format, idx) in strategy.recommendedFormats" :key="idx" class="px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-300">
-              {{ format }}
-            </span>
+          <div class="flex flex-col gap-3">
+            <div v-for="(format, idx) in strategy.recommendedFormats" :key="idx" class="p-4 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-300">
+              <template v-if="parseJsonItem(format).format">
+                <strong class="text-white block mb-1 text-base">{{ parseJsonItem(format).format }}</strong>
+                <span class="text-gray-400">{{ parseJsonItem(format).description }}</span>
+              </template>
+              <template v-else>{{ format }}</template>
+            </div>
           </div>
         </div>
       </div>
@@ -131,6 +139,16 @@ const error = ref(null);
 const jobMessage = ref('');
 let pollInterval = null;
 
+// Helper to cleanly parse the stringified JSON objects from the DB
+const parseJsonItem = (item) => {
+  if (!item) return {};
+  try {
+    return typeof item === 'string' && item.startsWith('{') ? JSON.parse(item) : { name: item };
+  } catch {
+    return { name: item };
+  }
+};
+
 const loadStrategy = async () => {
   if (!authStore.activeBrand) return;
   loading.value = true;
@@ -141,7 +159,7 @@ const loadStrategy = async () => {
     strategy.value = response.data.strategy;
   } catch (err) {
     if (err.message.includes('No strategy found')) {
-      strategy.value = null; // Normal empty state
+      strategy.value = null;
     } else {
       error.value = err.message || 'Failed to load strategy.';
     }
@@ -181,7 +199,7 @@ const pollJob = (jobId) => {
         clearInterval(pollInterval);
         jobMessage.value = '';
         generating.value = false;
-        loadStrategy(); // Refresh the UI with the new strategy
+        await loadStrategy(); // Reloads fresh data safely
       } else if (job.state === 'FAILED') {
         clearInterval(pollInterval);
         error.value = 'Strategy generation failed. Please try again.';

@@ -23,18 +23,18 @@ async function fetchAPI(endpoint, options = {}) {
 
 export const strategyApi = {
     // 1. Trigger Strategy Generation (Macro)
+    getActiveStrategy(brandId) {
+        return fetchAPI(`/brands/${brandId}/strategy?_t=${Date.now()}`, { method: 'GET' });
+    },
+
+    // 2. Trigger Strategy Generation (Macro)
     generateStrategy(brandId) {
         return fetchAPI(`/brands/${brandId}/strategy/generate`, { method: 'POST' });
     },
 
-    // 2. Fetch Active Strategy (Macro View)
-    getActiveStrategy(brandId) {
-        return fetchAPI(`/brands/${brandId}/strategy`, { method: 'GET' });
-    },
-
-    // 3. Fetch Ideas for a Strategy (Ideation Board)
-    getIdeas(strategyId) {
-        return fetchAPI(`/strategy/${strategyId}/ideas`, { method: 'GET' });
+    // 3. Fetch Ideas for a Strategy (Ideation Board) - Added Cache Buster
+    getIdeas(brandId, strategyId) {
+        return fetchAPI(`/brands/${brandId}/strategy/${strategyId}/ideas?_t=${Date.now()}`, { method: 'GET' });
     },
 
     // 4. Discard & Replace Idea (Generates 1 targeted replacement)
