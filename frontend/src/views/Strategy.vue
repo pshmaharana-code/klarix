@@ -139,20 +139,43 @@ const error = ref(null);
 const jobMessage = ref('');
 let pollInterval = null;
 
-// Helper to cleanly parse the stringified JSON objects from the DB
+// The Fix: Safely recover the active brand on hard page reloads
+const ensureActiveBrand = async () => {
+  if (authStore.activeBrand) return true;
+  try {
+    const res = await fetch('/api/v2/brands', { credentials: 'include' });
+    const { data } = await res.json();
+    if (data && data.brands && data.brands.length > 0) {
+      authStore.setActiveBrand(data.brands[0]);
+      return true;
+    }
+  } catch (e) {
+    console.error("Failed to fetch brand context", e);
+  }
+  return false;
+};
+
+// The Fix: Handle native JS Objects that Prisma already parsed
 const parseJsonItem = (item) => {
   if (!item) return {};
+  if (typeof item === 'object') return item; // If it's already an object, use it directly!
   try {
-    return typeof item === 'string' && item.startsWith('{') ? JSON.parse(item) : { name: item };
+    const str = String(item).trim();
+    return str.startsWith('{') ? JSON.parse(str) : { name: str };
   } catch {
-    return { name: item };
+    return { name: String(item) };
   }
 };
 
 const loadStrategy = async () => {
-  if (!authStore.activeBrand) return;
   loading.value = true;
   error.value = null;
+
+  const hasBrand = await ensureActiveBrand();
+  if (!hasBrand) {
+    loading.value = false;
+    return;
+  }
 
   try {
     const response = await strategyApi.getActiveStrategy(authStore.activeBrand.id);
@@ -169,7 +192,9 @@ const loadStrategy = async () => {
 };
 
 const generateStrategy = async () => {
-  if (!authStore.activeBrand) return;
+  const hasBrand = await ensureActiveBrand();
+  if (!hasBrand) return;
+
   generating.value = true;
   error.value = null;
   jobMessage.value = 'Initializing AI Strategy Engine...';

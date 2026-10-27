@@ -22,7 +22,7 @@ async function fetchAPI(endpoint, options = {}) {
 }
 
 export const strategyApi = {
-    // 1. Trigger Strategy Generation (Macro)
+    // 1. Fetch Active Strategy (Macro View) - Cache Buster Added
     getActiveStrategy(brandId) {
         return fetchAPI(`/brands/${brandId}/strategy?_t=${Date.now()}`, { method: 'GET' });
     },
@@ -32,20 +32,25 @@ export const strategyApi = {
         return fetchAPI(`/brands/${brandId}/strategy/generate`, { method: 'POST' });
     },
 
-    // 3. Fetch Ideas for a Strategy (Ideation Board) - Added Cache Buster
+    // 3. Fetch Ideas for a Strategy (Ideation Board) - Cache Buster Added
     getIdeas(brandId, strategyId) {
         return fetchAPI(`/brands/${brandId}/strategy/${strategyId}/ideas?_t=${Date.now()}`, { method: 'GET' });
     },
 
     // 4. Discard & Replace Idea (Generates 1 targeted replacement)
     generateIdeas(brandId, strategyId, count = 1) {
-        return fetchAPI(`/brands/${brandId}/ideas/generate`, {
+        return fetchAPI(`/brands/${brandId}/strategy/ideas/generate`, {
             method: 'POST',
             body: JSON.stringify({ strategyId, count })
         });
     },
 
-    // 5. Trigger Script Generation / Regeneration (with optional feedback)
+    // 5. Fetch Scripts for a specific Idea - Cache Buster Added
+    getScripts(ideaId) {
+        return fetchAPI(`/ideas/${ideaId}/scripts?_t=${Date.now()}`, { method: 'GET' });
+    },
+
+    // 6. Trigger Script Generation / Regeneration (with optional feedback)
     generateScript(ideaId, instruction = null) {
         return fetchAPI(`/ideas/${ideaId}/scripts/generate`, {
             method: 'POST',
@@ -53,8 +58,8 @@ export const strategyApi = {
         });
     },
 
-    // 6. Fetch Scripts for a specific Idea
-    getScripts(ideaId) {
-        return fetchAPI(`/ideas/${ideaId}/scripts`, { method: 'GET' });
+    // 7. Poll Background Job Status - Cache Buster Added
+    getJobStatus(brandId, jobId) {
+        return fetchAPI(`/brands/${brandId}/jobs/${jobId}?_t=${Date.now()}`, { method: 'GET' });
     }
 };

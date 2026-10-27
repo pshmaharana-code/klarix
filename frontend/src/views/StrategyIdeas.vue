@@ -102,15 +102,34 @@ const ideas = ref([]);
 const loading = ref(true);
 const error = ref(null);
 
-// Regeneration states
 const generatingIdea = ref(false);
 const jobMessage = ref('');
 let pollInterval = null;
 
+const ensureActiveBrand = async () => {
+  if (authStore.activeBrand) return true;
+  try {
+    const res = await fetch('/api/v2/brands', { credentials: 'include' });
+    const { data } = await res.json();
+    if (data && data.brands && data.brands.length > 0) {
+      authStore.setActiveBrand(data.brands[0]);
+      return true;
+    }
+  } catch (e) {
+    console.error("Failed to fetch brand context", e);
+  }
+  return false;
+};
+
 const loadIdeas = async () => {
-  if (!authStore.activeBrand) return;
   loading.value = true;
   error.value = null;
+
+  const hasBrand = await ensureActiveBrand();
+  if (!hasBrand) {
+    loading.value = false;
+    return;
+  }
 
   try {
     const response = await strategyApi.getIdeas(authStore.activeBrand.id, strategyId);
@@ -122,17 +141,15 @@ const loadIdeas = async () => {
   }
 };
 
-// Targets a single idea replacement exactly as designed in your backend plan
 const discardIdea = async (ideaId) => {
-  if (!authStore.activeBrand) return;
+  const hasBrand = await ensureActiveBrand();
+  if (!hasBrand) return;
   
-  // Optimistically remove the idea from the UI
   ideas.value = ideas.value.filter(i => i.id !== ideaId);
   generatingIdea.value = true;
   jobMessage.value = 'Generating 1 targeted replacement idea...';
 
   try {
-    // Generate exactly 1 new idea
     const res = await strategyApi.generateIdeas(authStore.activeBrand.id, strategyId, 1);
     const jobId = res.data.job.id;
     pollReplacementJob(jobId);
@@ -140,7 +157,7 @@ const discardIdea = async (ideaId) => {
     error.value = 'Failed to generate replacement idea.';
     generatingIdea.value = false;
     jobMessage.value = '';
-    loadIdeas(); // Reload to get the discarded idea back if it failed
+    loadIdeas(); 
   }
 };
 
@@ -157,7 +174,6 @@ const pollReplacementJob = (jobId) => {
         jobMessage.value = '';
         generatingIdea.value = false;
         
-        // Silently reload the ideas grid to grab the new addition
         const updatedResponse = await strategyApi.getIdeas(authStore.activeBrand.id, strategyId);
         ideas.value = updatedResponse.data.ideas;
       } else if (job.state === 'FAILED') {
