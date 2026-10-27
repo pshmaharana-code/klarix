@@ -49,7 +49,7 @@ app.use('/api/v2/patterns', requireAuth, patternDetailRouter)
 app.use('/api/v2/content', requireAuth, globalContentRouter)
 app.use('/api/v2/brands/:brandId/strategy', strategyRoutes);
 // We mount ideas differently to support /api/v2/brands/:brandId/ideas/generate
-app.use('/api/v2/brands/:brandId', strategyRoutes);
+app.use('/api/v2/brands/:brandId/strategy', strategyRoutes);
 app.use('/api/v2/ideas', ideaRoutes);
 
 // Configure Multer in-memory upload handler (up to 60MB for video content)

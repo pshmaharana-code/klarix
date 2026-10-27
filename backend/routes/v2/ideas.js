@@ -5,11 +5,29 @@ import { PrismaClient } from '@prisma/client';
 const router = express.Router({ mergeParams: true });
 const prisma = new PrismaClient();
 
+// GET /api/v2/ideas/:ideaId/scripts
+// Fetches all scripts generated for a specific idea
+router.get('/:ideaId/scripts', async (req, res) => {
+    try {
+        const { ideaId } = req.params;
+
+        const scripts = await prisma.script.findMany({
+            where: { contentIdeaId: ideaId },
+            orderBy: { version: 'desc' } // Gets the newest regenerated version first
+        });
+
+        res.status(200).json({ data: { scripts } });
+    } catch (error) {
+        console.error('[API] Error fetching scripts:', error);
+        res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: error.message } });
+    }
+});
+
 // POST /api/v2/ideas/:ideaId/scripts/generate
 router.post('/:ideaId/scripts/generate', async (req, res) => {
     try {
         const { ideaId } = req.params;
-        const { instruction } = req.body; // Allows passing user feedback like "make the hook punchier"
+        const { instruction } = req.body;
 
         const idea = await prisma.contentIdea.findUnique({ where: { id: ideaId } });
         if (!idea) {
