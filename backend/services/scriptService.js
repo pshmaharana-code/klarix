@@ -77,10 +77,20 @@ export async function generateScript(brandId, contentIdeaId, userInstruction = n
     const result = await callAgent(SCRIPT_SYSTEM_PROMPT, JSON.stringify(aiPayload));
     const parsedData = scriptSchema.parse(result.data);
 
+    // 1. Find the highest existing version for this specific idea
+    const existingScript = await prisma.script.findFirst({
+        where: { contentIdeaId: contentIdeaId },
+        orderBy: { version: 'desc' }
+    });
+
+    // 2. Calculate the next version number
+    const nextVersion = existingScript ? existingScript.version + 1 : 1;
+
+    // 3. Save the new script with the dynamically incremented version
     const dbScript = await prisma.script.create({
         data: {
             contentIdeaId,
-            version: 1,
+            version: nextVersion,
             hook: parsedData.hook,
             opening: parsedData.opening,
             body: parsedData.body,
@@ -92,7 +102,7 @@ export async function generateScript(brandId, contentIdeaId, userInstruction = n
         }
     });
 
-    console.log(`[ScriptService] Script Generation Complete. Script ID: ${dbScript.id}`);
+    console.log(`[ScriptService] Script Generation Complete. Script ID: ${dbScript.id}, Version: ${nextVersion}`);
 
     return {
         status: 'COMPLETED',
