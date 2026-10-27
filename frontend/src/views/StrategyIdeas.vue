@@ -76,12 +76,12 @@
           >
             Discard & Replace
           </button>
-          <!-- We will wire this Write Script button up in Step 4 -->
-          <button 
-            class="px-4 py-2 text-xs font-bold bg-white text-black hover:bg-gray-200 rounded-lg transition-colors flex-1 text-center shadow-sm"
+          <router-link 
+            :to="`/strategy/${strategyId}/ideas/${idea.id}/script`"
+            class="px-4 py-2 text-xs font-bold bg-white text-black hover:bg-gray-200 rounded-lg transition-colors flex-1 text-center shadow-sm flex items-center justify-center"
           >
             Write Script →
-          </button>
+          </router-link>
         </div>
       </div>
     </div>
@@ -145,19 +145,24 @@ const discardIdea = async (ideaId) => {
   const hasBrand = await ensureActiveBrand();
   if (!hasBrand) return;
   
+  // Optimistically remove the idea from the UI
   ideas.value = ideas.value.filter(i => i.id !== ideaId);
   generatingIdea.value = true;
-  jobMessage.value = 'Generating 1 targeted replacement idea...';
+  jobMessage.value = 'Discarding concept and generating a targeted replacement...';
 
   try {
+    // 1. Actually delete it from the database first
+    await strategyApi.deleteIdea(ideaId);
+
+    // 2. Generate exactly 1 new idea
     const res = await strategyApi.generateIdeas(authStore.activeBrand.id, strategyId, 1);
     const jobId = res.data.job.id;
     pollReplacementJob(jobId);
   } catch (err) {
-    error.value = 'Failed to generate replacement idea.';
+    error.value = 'Failed to discard and replace idea.';
     generatingIdea.value = false;
     jobMessage.value = '';
-    loadIdeas(); 
+    loadIdeas(); // Reload to sync with DB if it failed
   }
 };
 
