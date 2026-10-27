@@ -49,6 +49,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/strategy',
+    name: 'Strategy',
+    component: () => import('./views/Strategy.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/patterns/:patternId',
     name: 'PatternDetail',
     component: () => import('./views/PatternDetail.vue'),
@@ -90,7 +96,7 @@ export const router = createRouter({
 
 router.beforeEach(async (to) => {
   const authStore = useAuthStore();
-  
+
   if (authStore.isInitializing) {
     await authStore.checkSession();
   }

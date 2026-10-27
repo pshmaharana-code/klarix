@@ -36,7 +36,13 @@
         >
           Patterns
         </router-link>
-        <a href="#" class="block whitespace-nowrap px-4 py-2 rounded-lg text-gray-400 hover:text-gray-300 transition-colors pointer-events-none opacity-50">Strategy</a>
+        <router-link
+          to="/strategy"
+          class="block whitespace-nowrap px-4 py-2 rounded-lg transition-colors hover:bg-gray-800"
+          active-class="bg-gray-800 text-white font-medium"
+        >
+          Strategy
+        </router-link>
       </nav>
       <div class="p-4 border-t border-gray-800 flex-shrink-0">
         <div class="flex items-center justify-between">
