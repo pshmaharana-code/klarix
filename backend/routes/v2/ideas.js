@@ -5,6 +5,23 @@ import { PrismaClient } from '@prisma/client';
 const router = express.Router({ mergeParams: true });
 const prisma = new PrismaClient();
 
+// DELETE /api/v2/ideas/:ideaId
+// Permanently removes a discarded content idea from the database
+router.delete('/:ideaId', async (req, res) => {
+    try {
+        const { ideaId } = req.params;
+
+        await prisma.contentIdea.delete({
+            where: { id: ideaId }
+        });
+
+        res.status(200).json({ success: true });
+    } catch (error) {
+        console.error('[API] Error deleting idea:', error);
+        res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: error.message } });
+    }
+});
+
 // GET /api/v2/ideas/:ideaId/scripts
 // Fetches all scripts generated for a specific idea
 router.get('/:ideaId/scripts', async (req, res) => {

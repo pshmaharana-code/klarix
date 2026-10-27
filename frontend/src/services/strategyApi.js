@@ -37,6 +37,11 @@ export const strategyApi = {
         return fetchAPI(`/brands/${brandId}/strategy/${strategyId}/ideas?_t=${Date.now()}`, { method: 'GET' });
     },
 
+    // 3.5. Discard (Delete) an Idea from the database
+    deleteIdea(ideaId) {
+        return fetchAPI(`/ideas/${ideaId}`, { method: 'DELETE' });
+    },
+
     // 4. Discard & Replace Idea (Generates 1 targeted replacement)
     generateIdeas(brandId, strategyId, count = 1) {
         return fetchAPI(`/brands/${brandId}/strategy/ideas/generate`, {
