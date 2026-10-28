@@ -13,6 +13,9 @@
       <div v-if="!loading && ideas.length > 0" class="text-sm text-gray-400">
         Review draft concepts before generating final scripts.
       </div>
+      <div v-else-if="!loading && ideas.length === 0" class="text-sm text-emerald-400 font-medium">
+        Inbox Zero. All content ideas processed.
+      </div>
     </div>
 
     <!-- Active Job Polling Message (For Discard & Replace) -->
@@ -32,6 +35,16 @@
     <div v-else-if="error" class="bg-red-900/50 border border-red-500/50 rounded-xl p-6 text-center">
       <p class="text-red-400">{{ error }}</p>
       <button @click="loadIdeas" class="mt-4 px-4 py-2 bg-red-800 hover:bg-red-700 rounded-lg text-white text-sm transition-colors">Try Again</button>
+    </div>
+
+    <div v-else-if="ideas.length === 0" class="bg-gray-900/50 border border-gray-800 rounded-xl p-12 flex flex-col items-center justify-center text-center">
+      <div class="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mb-4">
+        <svg class="w-8 h-8 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+        </svg>
+      </div>
+      <h3 class="text-xl font-bold text-white mb-2">All Caught Up</h3>
+      <p class="text-gray-400">You have published or processed all current ideas. Generate a new strategy to populate this board.</p>
     </div>
 
     <!-- The Ideas Grid -->
@@ -133,7 +146,8 @@ const loadIdeas = async () => {
 
   try {
     const response = await strategyApi.getIdeas(authStore.activeBrand.id, strategyId);
-    ideas.value = response.data.ideas;
+    // ONLY show ideas that are still in DRAFT mode
+    ideas.value = response.data.ideas.filter(idea => idea.status === 'DRAFT');
   } catch (err) {
     error.value = err.message || 'Failed to load content ideas.';
   } finally {
@@ -180,7 +194,8 @@ const pollReplacementJob = (jobId) => {
         generatingIdea.value = false;
         
         const updatedResponse = await strategyApi.getIdeas(authStore.activeBrand.id, strategyId);
-        ideas.value = updatedResponse.data.ideas;
+        // Ensure new ideas are also filtered down to just DRAFTS
+        ideas.value = updatedResponse.data.ideas.filter(idea => idea.status === 'DRAFT');
       } else if (job.state === 'FAILED') {
         clearInterval(pollInterval);
         jobMessage.value = '';
