@@ -37,6 +37,13 @@
           Patterns
         </router-link>
         <router-link
+          to="/memory"
+          class="block whitespace-nowrap px-4 py-2 rounded-lg transition-colors hover:bg-gray-800"
+          active-class="bg-gray-800 text-white font-medium"
+        >
+          Memory
+        </router-link>
+        <router-link
           to="/strategy"
           class="block whitespace-nowrap px-4 py-2 rounded-lg transition-colors hover:bg-gray-800"
           active-class="bg-gray-800 text-white font-medium"
