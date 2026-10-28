@@ -10,8 +10,18 @@
           <span>Back to Ideation Board</span>
         </router-link>
       </div>
-      <div v-if="script" class="text-xs bg-gray-800 px-3 py-1 rounded-full text-gray-400 uppercase tracking-wide">
-        Script Version {{ script.version }}
+      <div class="flex items-center gap-3">
+        <div v-if="script" class="text-xs bg-gray-800 px-3 py-1 rounded-full text-gray-400 uppercase tracking-wide">
+          Script Version {{ script.version }}
+        </div>
+        <button 
+          v-if="script" 
+          @click="publishScript" 
+          :disabled="publishing" 
+          class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
+        >
+          {{ publishing ? 'Archiving...' : 'Mark as Published ✓' }}
+        </button>
       </div>
     </div>
 
@@ -118,11 +128,12 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { strategyApi } from '../services/strategyApi';
 
 const route = useRoute();
+const router = useRouter();
 const authStore = useAuthStore();
 const strategyId = route.params.strategyId;
 const ideaId = route.params.ideaId;
@@ -133,6 +144,7 @@ const error = ref(null);
 
 const feedbackInstruction = ref('');
 const generating = ref(false);
+const publishing = ref(false);
 const jobMessage = ref('');
 let pollInterval = null;
 
@@ -149,6 +161,17 @@ const ensureActiveBrand = async () => {
     console.error("Failed to fetch brand context", e);
   }
   return false;
+};
+
+const publishScript = async () => {
+  publishing.value = true;
+  try {
+    await strategyApi.updateIdeaStatus(ideaId, 'PUBLISHED');
+    router.push(`/strategy/${strategyId}/ideas`);
+  } catch (err) {
+    alert('Failed to publish script: ' + (err.message || 'Unknown error'));
+    publishing.value = false;
+  }
 };
 
 const loadScript = async (isSilentRefresh = false) => {
