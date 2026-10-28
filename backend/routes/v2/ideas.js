@@ -22,6 +22,25 @@ router.delete('/:ideaId', async (req, res) => {
     }
 });
 
+// PATCH /api/v2/ideas/:ideaId/status
+// Archives or publishes a content idea to remove it from the active board
+router.patch('/:ideaId/status', async (req, res) => {
+    try {
+        const { ideaId } = req.params;
+        const { status } = req.body;
+
+        const updatedIdea = await prisma.contentIdea.update({
+            where: { id: ideaId },
+            data: { status }
+        });
+
+        res.status(200).json({ success: true, data: { idea: updatedIdea } });
+    } catch (error) {
+        console.error('[API] Error updating idea status:', error);
+        res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: error.message } });
+    }
+});
+
 // GET /api/v2/ideas/:ideaId/scripts
 // Fetches all scripts generated for a specific idea
 router.get('/:ideaId/scripts', async (req, res) => {

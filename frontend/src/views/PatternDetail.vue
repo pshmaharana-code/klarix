@@ -39,24 +39,24 @@
       <header class="bg-gray-900 border border-gray-800 rounded-xl p-6 md:p-8">
         <div class="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div>
-            <span class="text-xs uppercase tracking-wide text-indigo-300">{{ detail.pattern.category }}</span>
-            <h1 class="text-2xl md:text-3xl font-bold text-white mt-2">{{ detail.pattern.title }}</h1>
+            <span class="text-xs uppercase tracking-wide text-indigo-300">{{ detail.category }}</span>
+            <h1 class="text-2xl md:text-3xl font-bold text-white mt-2">{{ detail.title || 'Discovered Pattern' }}</h1>
           </div>
           <div class="text-left md:text-right">
             <div class="text-xs text-gray-400">Confidence</div>
-            <div class="text-2xl font-semibold text-emerald-300">{{ formatConfidence(detail.pattern.confidence) }}</div>
+            <div class="text-2xl font-semibold text-emerald-300">{{ formatConfidence(detail.confidence) }}</div>
           </div>
         </div>
-        <p class="text-gray-200 leading-relaxed mt-6 text-lg">{{ detail.pattern.claim }}</p>
-        <p v-if="detail.pattern.recommendedAction" class="text-sm text-gray-400 mt-5 border-l-2 border-indigo-500 pl-4">
-          Recommended action: {{ detail.pattern.recommendedAction }}
+        <p class="text-gray-200 leading-relaxed mt-6 text-lg">{{ detail.claim }}</p>
+        <p v-if="detail.recommendedAction" class="text-sm text-gray-400 mt-5 border-l-2 border-indigo-500 pl-4">
+          Recommended action: {{ detail.recommendedAction }}
         </p>
       </header>
 
       <section class="bg-gray-900 border border-gray-800 rounded-xl p-6">
         <div class="flex items-center justify-between gap-4 mb-5">
           <h2 class="text-lg font-semibold text-white">Why Klarix believes this</h2>
-          <span class="text-sm text-gray-400">{{ detail.evidence.length }} evidence items</span>
+          <span class="text-sm text-gray-400">{{ detail.evidence?.length || 0 }} evidence items</span>
         </div>
         <div class="space-y-3">
           <article v-for="item in detail.evidence" :key="item.id" class="border border-gray-800 rounded-lg p-4">
@@ -71,24 +71,24 @@
         </div>
       </section>
 
-      <section v-if="detail.pattern.impact" class="bg-gray-900 border border-gray-800 rounded-xl p-6">
+      <section v-if="detail.impact" class="bg-gray-900 border border-gray-800 rounded-xl p-6">
         <h2 class="text-lg font-semibold text-white mb-4">Empirical Comparison</h2>
         <dl class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div class="p-4 rounded-lg bg-gray-950 border border-gray-800">
             <dt class="text-gray-500 uppercase tracking-wider text-[10px] font-bold">Qualified Sample</dt>
-            <dd class="text-white mt-1 text-lg font-semibold">{{ detail.pattern.impact.sampleSize }}</dd>
+            <dd class="text-white mt-1 text-lg font-semibold">{{ detail.impact.sampleSize }}</dd>
           </div>
           <div class="p-4 rounded-lg bg-gray-950 border border-gray-800">
             <dt class="text-gray-500 uppercase tracking-wider text-[10px] font-bold">Top Cohort Avg</dt>
-            <dd class="text-white mt-1 text-lg font-semibold">{{ formatPercent(detail.pattern.impact.topAverage) }}</dd>
+            <dd class="text-white mt-1 text-lg font-semibold">{{ formatPercent(detail.impact.topAverage) }}</dd>
           </div>
           <div class="p-4 rounded-lg bg-gray-950 border border-gray-800">
             <dt class="text-gray-500 uppercase tracking-wider text-[10px] font-bold">Baseline Cohort</dt>
-            <dd class="text-white mt-1 text-lg font-semibold">{{ formatPercent(detail.pattern.impact.baselineAverage) }}</dd>
+            <dd class="text-white mt-1 text-lg font-semibold">{{ formatPercent(detail.impact.baselineAverage) }}</dd>
           </div>
           <div class="p-4 rounded-lg bg-indigo-900/20 border border-indigo-500/30">
             <dt class="text-indigo-300 uppercase tracking-wider text-[10px] font-bold">Relative Delta</dt>
-            <dd class="text-indigo-100 mt-1 text-lg font-semibold">{{ formatPercent(detail.pattern.impact.relativeDelta) }}</dd>
+            <dd class="text-indigo-100 mt-1 text-lg font-semibold">{{ formatPercent(detail.impact.relativeDelta) }}</dd>
           </div>
         </dl>
       </section>
