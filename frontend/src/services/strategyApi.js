@@ -42,6 +42,14 @@ export const strategyApi = {
         return fetchAPI(`/ideas/${ideaId}`, { method: 'DELETE' });
     },
 
+    // 3.6. Update Idea Status (Archive/Publish)
+    updateIdeaStatus(ideaId, status) {
+        return fetchAPI(`/ideas/${ideaId}/status`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status })
+        });
+    },
+
     // 4. Discard & Replace Idea (Generates 1 targeted replacement)
     generateIdeas(brandId, strategyId, count = 1) {
         return fetchAPI(`/brands/${brandId}/strategy/ideas/generate`, {
