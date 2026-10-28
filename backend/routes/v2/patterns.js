@@ -9,7 +9,9 @@ import {
   getPatternDetail,
   listPatterns
 } from '../../services/patternService.js';
+import { PrismaClient } from '@prisma/client';
 
+const prisma = new PrismaClient();
 const brandPatternsRouter = express.Router({ mergeParams: true });
 const patternDetailRouter = express.Router({ mergeParams: true });
 
@@ -101,6 +103,38 @@ patternDetailRouter.get('/:patternId', async (req, res) => {
   } catch (error) {
     console.error('[Patterns Route] Detail error:', error.name);
     return res.status(500).json({ success: false, error: 'INTERNAL_ERROR', message: 'Error retrieving pattern' });
+  }
+});
+
+// POST /api/v2/patterns/:patternId/promote
+// Promotes a discovered pattern into an active Brand Memory entry
+patternDetailRouter.post('/:patternId/promote', async (req, res) => {
+  try {
+    const { patternId } = req.params;
+
+    // 1. Fetch the existing pattern
+    const pattern = await prisma.pattern.findUnique({
+      where: { id: patternId }
+    });
+
+    if (!pattern) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Pattern not found' } });
+    }
+
+    // 2. Inject it into the Brand Memory ecosystem as a verified rule
+    const memory = await prisma.brandMemoryEntry.create({
+      data: {
+        brandId: pattern.brandId,
+        domain: 'Content Intelligence',
+        statement: pattern.claim,
+        status: 'ACTIVE'
+      }
+    });
+
+    res.status(200).json({ success: true, data: { memory } });
+  } catch (error) {
+    console.error('[API] Error promoting pattern to memory:', error);
+    res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: error.message } });
   }
 });
 
