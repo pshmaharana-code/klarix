@@ -19,6 +19,7 @@ import { brandPatternsRouter, patternDetailRouter } from './routes/v2/patterns.j
 import { requireAuth } from './middleware/auth.js'
 import strategyRoutes from './routes/v2/strategy.js';
 import ideaRoutes from './routes/v2/ideas.js';
+import { brandMemoryRouter } from './routes/v2/memory.js';
 
 dotenv.config()
 
@@ -51,6 +52,10 @@ app.use('/api/v2/brands/:brandId/strategy', strategyRoutes);
 // We mount ideas differently to support /api/v2/brands/:brandId/ideas/generate
 app.use('/api/v2/brands/:brandId/strategy', strategyRoutes);
 app.use('/api/v2/ideas', ideaRoutes);
+
+// Memory Routes (Brand Governance)
+app.use('/api/v2/brands/:brandId/memory', brandMemoryRouter);
+
 
 // Configure Multer in-memory upload handler (up to 60MB for video content)
 const upload = multer({
