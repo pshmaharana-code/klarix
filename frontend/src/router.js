@@ -55,6 +55,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/brand-memory',
+    name: 'BrandMemory',
+    component: () => import('./views/BrandMemory.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/onboarding/connect',
     name: 'Connect',
     component: Connect,
