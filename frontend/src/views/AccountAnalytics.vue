@@ -1,181 +1,189 @@
 <template>
   <div class="w-full min-w-0 max-w-6xl mx-auto space-y-8 pb-12">
-    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <!-- Header & Filters -->
+    <div class="flex flex-col md:flex-row md:items-start justify-between gap-6">
       <div>
-        <h2 class="text-3xl font-bold mb-2 text-white">Content Analytics</h2>
-        <p class="text-gray-400">View quantitative overview, trends, and content performance.</p>
+        <h2 class="text-2xl md:text-3xl font-bold mb-2 text-white">Content Analytics</h2>
+        <p class="text-sm text-gray-400">Empirical performance data and macro interaction trends.</p>
       </div>
 
-      <!-- Filters -->
-      <div class="flex flex-wrap gap-4 items-center bg-gray-900/50 p-4 rounded-xl border border-gray-800">
+      <div class="flex flex-wrap gap-3 items-end bg-gray-900/50 p-4 rounded-xl border border-gray-800">
         <div>
-          <label class="block text-xs font-medium text-gray-400 mb-1">Content Type</label>
-          <select v-model="filters.contentType" @change="fetchMetrics" class="bg-gray-800 border border-gray-700 text-white text-sm rounded-lg block w-full p-2.5">
+          <label class="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Format</label>
+          <select v-model="filters.contentType" @change="fetchMetrics" class="bg-gray-950 border border-gray-800 text-white text-sm rounded-lg block w-32 p-2 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all">
             <option value="">All Types</option>
             <option value="IMAGE">Image</option>
             <option value="VIDEO">Video</option>
             <option value="CAROUSEL">Carousel</option>
             <option value="REEL">Reel</option>
-            <option value="OTHER">Other</option>
           </select>
         </div>
         <div>
-          <label class="block text-xs font-medium text-gray-400 mb-1">From Date</label>
-          <input type="date" v-model="filters.from" @change="fetchMetrics" class="bg-gray-800 border border-gray-700 text-white text-sm rounded-lg block w-full p-2.5">
+          <label class="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">From</label>
+          <input type="date" v-model="filters.from" @change="fetchMetrics" class="bg-gray-950 border border-gray-800 text-white text-sm rounded-lg block p-2 focus:border-indigo-500 outline-none">
         </div>
         <div>
-          <label class="block text-xs font-medium text-gray-400 mb-1">To Date</label>
-          <input type="date" v-model="filters.to" @change="fetchMetrics" class="bg-gray-800 border border-gray-700 text-white text-sm rounded-lg block w-full p-2.5">
+          <label class="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">To</label>
+          <input type="date" v-model="filters.to" @change="fetchMetrics" class="bg-gray-950 border border-gray-800 text-white text-sm rounded-lg block p-2 focus:border-indigo-500 outline-none">
         </div>
-        <div class="pt-5">
-          <button @click="clearFilters" class="text-gray-400 hover:text-white text-sm underline">Clear</button>
-        </div>
+        <button @click="clearFilters" class="text-gray-400 hover:text-white text-xs font-bold uppercase tracking-wider px-2 py-2 transition-colors">Clear</button>
       </div>
-      <p v-if="filterError" class="text-sm text-amber-300" role="alert">{{ filterError }}</p>
     </div>
+    
+    <p v-if="filterError" class="text-sm text-amber-400 font-medium">{{ filterError }}</p>
 
-    <!-- Loading State -->
+    <!-- States -->
     <div v-if="loading" class="text-gray-400 animate-pulse bg-gray-900 p-8 rounded-xl border border-gray-800">
-      Loading analytics...
+      Aggregating telemetry...
     </div>
 
-    <!-- Error State -->
-    <div v-else-if="error" class="p-6 bg-red-900/50 border border-red-800 rounded-xl text-red-200">
-      <h3 class="text-lg font-medium mb-2">Failed to load analytics</h3>
+    <div v-else-if="error" class="p-6 bg-red-900/20 border border-red-900/50 rounded-xl text-red-400">
       <p>{{ error }}</p>
-      <button type="button" @click="fetchMetrics" class="mt-4 px-3 py-2 bg-red-800 hover:bg-red-700 rounded-lg text-sm font-medium">
-        Retry
-      </button>
+      <button @click="fetchMetrics" class="mt-4 px-4 py-2 bg-red-900/40 hover:bg-red-900/60 rounded-lg text-white text-sm font-bold">Retry Connection</button>
     </div>
 
-    <!-- Brand State -->
-    <div v-else-if="!authStore.activeBrand" class="text-center py-20 bg-gray-900 rounded-xl border border-gray-800">
-      <h3 class="text-xl font-bold mb-2">No Brand Selected</h3>
-      <p class="text-gray-400">Create or select a brand before viewing analytics.</p>
+    <div v-else-if="!authStore.activeBrand" class="p-12 bg-gray-900 rounded-xl border border-gray-800 text-center">
+      <h3 class="text-xl font-bold mb-2 text-white">No Brand Selected</h3>
+      <p class="text-gray-400">Select a brand context to view empirical analytics.</p>
     </div>
 
-    <!-- Empty State -->
-    <div v-else-if="!hasData" class="text-center py-20 bg-gray-900 rounded-xl border border-gray-800">
-      <div class="w-16 h-16 bg-gray-800 rounded-full mx-auto flex items-center justify-center mb-4">
-        <svg class="w-8 h-8 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+    <div v-else-if="!hasData" class="p-12 bg-gray-900/50 rounded-xl border border-gray-800 text-center flex flex-col items-center">
+      <div class="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mb-4">
+        <span class="text-2xl">∅</span>
       </div>
-      <h3 class="text-xl font-bold mb-2">No Content Data</h3>
-      <p class="text-gray-400">No content metrics match the current filters or have been collected yet.</p>
+      <h3 class="text-xl font-bold mb-2 text-white">No Telemetry Found</h3>
+      <p class="text-gray-400 max-w-sm">There is no content data matching your current filters. Sync new posts or clear your date range.</p>
     </div>
 
-    <!-- Populated State -->
-    <div v-else class="space-y-8">
-      <div v-if="hasPartialData" class="p-4 bg-amber-900/30 border border-amber-800 rounded-xl text-amber-200 text-sm" role="status">
-        Some content has incomplete source metrics. Missing values are shown as dashes and are excluded from averages.
-      </div>
+    <!-- Populated Dashboard -->
+    <div v-else class="space-y-6">
       
-      <!-- Trend Overview -->
-      <div v-if="metricsData.comparisons" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="bg-gray-900 p-6 rounded-xl border border-gray-800 flex flex-col items-start">
-          <span class="text-gray-400 text-sm font-medium mb-1">Growth Indicator</span>
-          <span class="text-3xl font-bold" :class="getGrowthColor(metricsData.comparisons.growth)">
-            {{ metricsData.comparisons.growth || 'INSUFFICIENT DATA' }}
-          </span>
-          <p class="text-xs text-gray-500 mt-2">Based on interaction rate trends in the selected period.</p>
-        </div>
-        <div class="bg-gray-900 p-6 rounded-xl border border-gray-800 flex flex-col items-start">
-          <span class="text-gray-400 text-sm font-medium mb-1">Interaction Rate Trend</span>
-          <div class="flex items-baseline gap-2">
-            <span class="text-3xl font-bold text-white">
-              {{ formatTrend(metricsData.comparisons.interactionRateTrend) }}
-            </span>
-          </div>
-          <p class="text-xs text-gray-500 mt-2">Relative change across the timeline.</p>
-        </div>
+      <div v-if="hasPartialData" class="p-4 bg-amber-900/20 border border-amber-900/50 rounded-xl text-amber-400 text-sm flex items-center gap-3">
+        <span class="font-bold">⚠ Partial Data:</span> Some content items lack complete source metrics. These are excluded from macro averages.
       </div>
 
-      <!-- Quantitative Overview -->
-      <div v-if="metricsData.overview" class="bg-gray-900 rounded-xl border border-gray-800 p-6">
-        <h3 class="text-lg font-medium text-white mb-4">Quantitative Overview</h3>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div class="p-4 bg-gray-950 rounded-lg border border-gray-800">
-            <div class="text-xs text-gray-400 mb-1">Total Content</div>
-            <div class="text-xl font-bold text-white">{{ metricsData.overview.totalContent }}</div>
-          </div>
-          <div class="p-4 bg-gray-950 rounded-lg border border-gray-800">
-            <div class="text-xs text-gray-400 mb-1">Avg Reach</div>
-            <div class="text-xl font-bold text-white">{{ formatNumber(metricsData.overview.avgReach) }}</div>
-          </div>
-          <div class="p-4 bg-gray-950 rounded-lg border border-gray-800">
-            <div class="text-xs text-gray-400 mb-1">Avg Impressions</div>
-            <div class="text-xl font-bold text-white">{{ formatNumber(metricsData.overview.avgImpressions) }}</div>
-          </div>
-          <div class="p-4 bg-gray-950 rounded-lg border border-gray-800">
-            <div class="text-xs text-gray-400 mb-1">Avg Interaction Rate</div>
-            <div class="text-xl font-bold text-white">{{ formatPercent(metricsData.overview.avgInteractionRate) }}</div>
-          </div>
-          <div class="p-4 bg-gray-950 rounded-lg border border-gray-800">
-            <div class="text-xs text-gray-400 mb-1">Avg Like Rate</div>
-            <div class="text-xl font-bold text-white">{{ formatPercent(metricsData.overview.avgLikeRate) }}</div>
-          </div>
-          <div class="p-4 bg-gray-950 rounded-lg border border-gray-800">
-            <div class="text-xs text-gray-400 mb-1">Avg Comment Rate</div>
-            <div class="text-xl font-bold text-white">{{ formatPercent(metricsData.overview.avgCommentRate) }}</div>
-          </div>
-          <div class="p-4 bg-gray-950 rounded-lg border border-gray-800">
-            <div class="text-xs text-gray-400 mb-1">Avg Share Rate</div>
-            <div class="text-xl font-bold text-white">{{ formatPercent(metricsData.overview.avgShareRate) }}</div>
-          </div>
-          <div class="p-4 bg-gray-950 rounded-lg border border-gray-800">
-            <div class="text-xs text-gray-400 mb-1">Avg View-to-Reach Ratio</div>
-            <div class="text-xl font-bold text-white">{{ formatNumber(metricsData.overview.avgViewToReachRatio, 2) }}</div>
+      <!-- AI Executive Brief (Replaces the split Trend cards) -->
+      <div v-if="metricsData.comparisons" class="bg-gray-900 border border-gray-800 rounded-xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-6 shadow-sm">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-2 block">Macro Velocity Verdict</span>
+          <h3 class="text-2xl sm:text-3xl font-bold text-white mb-2 uppercase tracking-wide" :class="getVerdictColor(metricsData.comparisons.growth)">
+            {{ metricsData.comparisons.growth || 'Insufficient Data' }}
+          </h3>
+          <p class="text-sm text-gray-400 max-w-md">
+            Your content interaction rate is trending <strong class="text-gray-200">{{ formatTrend(metricsData.comparisons.interactionRateTrend) }}</strong> relative to your historical baseline in this period.
+          </p>
+        </div>
+        <div class="shrink-0 p-4 bg-gray-950 rounded-xl border border-gray-800 text-center min-w-[140px]">
+          <div class="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1">Delta</div>
+          <div class="text-3xl font-bold" :class="getVerdictColor(metricsData.comparisons.growth)">
+            {{ formatTrend(metricsData.comparisons.interactionRateTrend) }}
           </div>
         </div>
       </div>
 
-      <!-- Content Performance Table -->
-      <div v-if="metricsData.series && metricsData.series.length > 0" class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-        <div class="p-6 border-b border-gray-800 flex justify-between items-center">
-          <h3 class="text-lg font-medium text-white">Content Performance</h3>
-          <span class="text-xs bg-gray-800 px-2 py-1 rounded text-gray-400">Calculation Version: {{ metricsData.overview.calculationVersion }}</span>
+      <!-- KPI Grid -->
+      <div v-if="metricsData.overview" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Primary Metrics -->
+        <div class="lg:col-span-1 bg-gray-900 rounded-xl border border-gray-800 p-6 flex flex-col justify-center space-y-6">
+          <div>
+            <div class="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1">Analyzed Assets</div>
+            <div class="text-4xl font-bold text-white">{{ metricsData.overview.totalContent }}</div>
+          </div>
+          <div class="h-px w-full bg-gray-800"></div>
+          <div>
+            <div class="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1">Average Reach</div>
+            <div class="text-4xl font-bold text-white">{{ formatNumber(metricsData.overview.avgReach) }}</div>
+          </div>
+          <div class="h-px w-full bg-gray-800"></div>
+          <div>
+            <div class="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1">Avg Interaction Rate</div>
+            <div class="text-4xl font-bold text-indigo-400">{{ formatPercent(metricsData.overview.avgInteractionRate) }}</div>
+          </div>
+        </div>
+
+        <!-- Secondary Diagnostics Grid -->
+        <div class="lg:col-span-2 bg-gray-900 rounded-xl border border-gray-800 p-6">
+          <div class="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-6">Secondary Conversion Metrics</div>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <div class="p-4 bg-gray-950 rounded-lg border border-gray-800/50">
+              <div class="text-xs text-gray-500 mb-1">Impressions</div>
+              <div class="text-xl font-bold text-gray-200">{{ formatNumber(metricsData.overview.avgImpressions) }}</div>
+            </div>
+            <div class="p-4 bg-gray-950 rounded-lg border border-gray-800/50">
+              <div class="text-xs text-gray-500 mb-1">Like Rate</div>
+              <div class="text-xl font-bold text-gray-200">{{ formatPercent(metricsData.overview.avgLikeRate) }}</div>
+            </div>
+            <div class="p-4 bg-gray-950 rounded-lg border border-gray-800/50">
+              <div class="text-xs text-gray-500 mb-1">Comment Rate</div>
+              <div class="text-xl font-bold text-gray-200">{{ formatPercent(metricsData.overview.avgCommentRate) }}</div>
+            </div>
+            <div class="p-4 bg-gray-950 rounded-lg border border-gray-800/50">
+              <div class="text-xs text-gray-500 mb-1">Save Rate</div>
+              <div class="text-xl font-bold text-gray-200">{{ formatPercent(metricsData.overview.avgSaveRate) }}</div>
+            </div>
+            <div class="p-4 bg-gray-950 rounded-lg border border-gray-800/50">
+              <div class="text-xs text-gray-500 mb-1">Share Rate</div>
+              <div class="text-xl font-bold text-gray-200">{{ formatPercent(metricsData.overview.avgShareRate) }}</div>
+            </div>
+            <div class="p-4 bg-gray-950 rounded-lg border border-gray-800/50">
+              <div class="text-xs text-gray-500 mb-1">View/Reach Ratio</div>
+              <div class="text-xl font-bold text-gray-200">{{ formatNumber(metricsData.overview.avgViewToReachRatio, 2) }}</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Content Performance Log -->
+      <div v-if="metricsData.series && metricsData.series.length > 0" class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden shadow-sm">
+        <div class="p-5 border-b border-gray-800 flex justify-between items-center bg-gray-950/50">
+          <h3 class="text-sm font-bold text-white uppercase tracking-wider">Asset Performance Log</h3>
         </div>
         <div class="overflow-x-auto">
-          <table class="w-full text-left text-sm text-gray-400">
-            <thead class="text-xs uppercase bg-gray-950 text-gray-500">
+          <table class="w-full text-left text-sm text-gray-300">
+            <thead class="text-[10px] uppercase font-bold tracking-widest bg-gray-950 text-gray-500">
               <tr>
-                <th scope="col" class="px-6 py-3">Date</th>
-                <th scope="col" class="px-6 py-3">Type</th>
-                <th scope="col" class="px-6 py-3 text-right">Reach</th>
-                <th scope="col" class="px-6 py-3 text-right">Interaction Rate</th>
-                <th scope="col" class="px-6 py-3 text-right">Percentile</th>
-                <th scope="col" class="px-6 py-3 text-right">Vs Baseline</th>
-                <th scope="col" class="px-6 py-3 text-right">Details</th>
+                <th scope="col" class="px-6 py-4">Publish Date</th>
+                <th scope="col" class="px-6 py-4">Format</th>
+                <th scope="col" class="px-6 py-4 text-right">Reach</th>
+                <th scope="col" class="px-6 py-4 text-right">Interaction</th>
+                <th scope="col" class="px-6 py-4 text-right">Cohort Rank</th>
+                <th scope="col" class="px-6 py-4 text-right">Vs Baseline</th>
+                <th scope="col" class="px-6 py-4 text-right">Action</th>
               </tr>
             </thead>
-            <tbody>
-              <tr v-for="row in metricsData.series" :key="row.contentId" class="border-b border-gray-800 hover:bg-gray-800/50 transition-colors">
-                <td class="px-6 py-4 font-medium text-white whitespace-nowrap">
+            <tbody class="divide-y divide-gray-800">
+              <tr v-for="row in metricsData.series" :key="row.contentId" class="hover:bg-gray-800/30 transition-colors">
+                <td class="px-6 py-4 font-medium text-gray-200 whitespace-nowrap">
                   {{ formatDate(row.date) }}
                 </td>
                 <td class="px-6 py-4">
-                  <span class="px-2 py-1 bg-gray-800 text-xs rounded uppercase">{{ row.type }}</span>
+                  <span class="px-2 py-1 bg-gray-800 text-[10px] font-bold rounded uppercase tracking-wider text-gray-400">{{ row.type }}</span>
                 </td>
-                <td class="px-6 py-4 text-right">
+                <td class="px-6 py-4 text-right font-medium">
                   {{ formatNumber(row.reach) }}
                 </td>
-                <td class="px-6 py-4 text-right text-white font-medium">
+                <td class="px-6 py-4 text-right font-bold text-white">
                   {{ formatPercent(row.interactionRate) }}
                 </td>
                 <td class="px-6 py-4 text-right">
-                  <span v-if="row.percentileComparison?.interactionRate !== null && row.percentileComparison?.interactionRate !== undefined" class="text-blue-400">P{{ row.percentileComparison.interactionRate }}</span>
+                  <span v-if="row.percentileComparison?.interactionRate != null" class="text-indigo-400 font-bold bg-indigo-400/10 px-2 py-1 rounded text-xs">
+                    P{{ row.percentileComparison.interactionRate }}
+                  </span>
                   <span v-else class="text-gray-600">-</span>
                 </td>
                 <td class="px-6 py-4 text-right">
-                  <div v-if="row.baselineComparison" class="flex flex-col items-end">
-                    <span :class="getBaselineColor(row.baselineComparison.performance)">
+                  <div v-if="row.baselineComparison" class="flex justify-end">
+                    <span class="text-xs font-bold px-2 py-1 rounded flex items-center gap-1" :class="getBadgeColor(row.baselineComparison.performance)">
                       {{ getBaselineSymbol(row.baselineComparison.performance) }} {{ formatPercent(Math.abs(row.baselineComparison.interactionRateDelta)) }}
                     </span>
                   </div>
                   <span v-else class="text-gray-600">-</span>
                 </td>
                 <td class="px-6 py-4 text-right">
-                  <router-link :to="`/content/${row.contentId}`" class="text-indigo-400 hover:text-indigo-300 underline text-xs">
-                    View Post
+                  <router-link :to="`/content/${row.contentId}`" class="text-xs font-bold text-gray-400 hover:text-white transition-colors uppercase tracking-wider">
+                    View →
                   </router-link>
                 </td>
               </tr>
@@ -203,17 +211,12 @@ const filters = ref({
   to: ''
 });
 let activeRequestController = null;
-const analyticsUnavailableMessage = 'Analytics is temporarily unavailable. Please try again.';
+const analyticsUnavailableMessage = 'Telemetry stream unavailable. Please check your connection.';
 
 const parseJsonResponse = async response => {
   const body = await response.text();
   if (!body) return null;
-
-  try {
-    return JSON.parse(body);
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(body); } catch { return null; }
 };
 
 const clearFilters = () => {
@@ -224,7 +227,7 @@ const clearFilters = () => {
 const validateFilters = () => {
   filterError.value = null;
   if (filters.value.from && filters.value.to && filters.value.from > filters.value.to) {
-    filterError.value = 'The From date must be on or before the To date.';
+    filterError.value = 'Chronological error: From date must precede To date.';
     return false;
   }
   return true;
@@ -237,10 +240,8 @@ const toFilterIso = (dateString, endOfDay = false) => {
 
 const ensureActiveBrand = async signal => {
   if (authStore.activeBrand) return true;
-
   const res = await fetch('/api/v2/brands', { credentials: 'include', signal });
-  if (!res.ok) throw new Error('Could not load your brands');
-
+  if (!res.ok) throw new Error('Could not synchronize brand context');
   const { data } = await res.json();
   const brand = data?.brands?.[0];
   if (brand) authStore.setActiveBrand(brand);
@@ -266,13 +267,8 @@ const fetchMetrics = async () => {
 
     const queryParams = new URLSearchParams();
     if (filters.value.contentType) queryParams.append('contentType', filters.value.contentType);
-    // Convert the user's local calendar dates to UTC boundaries for the API.
-    if (filters.value.from) {
-      queryParams.append('from', toFilterIso(filters.value.from));
-    }
-    if (filters.value.to) {
-      queryParams.append('to', toFilterIso(filters.value.to, true));
-    }
+    if (filters.value.from) queryParams.append('from', toFilterIso(filters.value.from));
+    if (filters.value.to) queryParams.append('to', toFilterIso(filters.value.to, true));
 
     const qs = queryParams.toString();
     const url = `/api/v2/brands/${authStore.activeBrand.id}/analytics/overview${qs ? '?' + qs : ''}`;
@@ -280,15 +276,11 @@ const fetchMetrics = async () => {
     const res = await fetch(url, { credentials: 'include', signal: requestController.signal });
     const payload = await parseJsonResponse(res);
 
-    if (!res.ok) {
-      throw new Error(payload?.message || payload?.error?.message || analyticsUnavailableMessage);
-    }
-
+    if (!res.ok) throw new Error(payload?.message || payload?.error?.message || analyticsUnavailableMessage);
     if (!payload?.data) throw new Error(analyticsUnavailableMessage);
 
-    const { data } = payload;
     if (requestController.signal.aborted || activeRequestController !== requestController) return;
-    metricsData.value = data || {};
+    metricsData.value = payload.data || {};
   } catch (e) {
     if (e.name === 'AbortError') return;
     error.value = e instanceof TypeError ? analyticsUnavailableMessage : (e.message || analyticsUnavailableMessage);
@@ -307,27 +299,16 @@ const hasData = computed(() => {
 const hasPartialData = computed(() => {
   const rows = metricsData.value?.series || [];
   return rows.some(row => [
-    row.reach,
-    row.impressions,
-    row.plays,
-    row.likeRate,
-    row.commentRate,
-    row.saveRate,
-    row.shareRate,
-    row.interactionRate,
-    row.viewToReachRatio
-  ]
-    .some(value => value === null || value === undefined));
+    row.reach, row.impressions, row.plays, row.likeRate, 
+    row.commentRate, row.saveRate, row.shareRate, 
+    row.interactionRate, row.viewToReachRatio
+  ].some(value => value == null));
 });
 
 const formatDate = (dateStr) => {
-  if (!dateStr) return 'N/A';
+  if (!dateStr) return '-';
   const date = new Date(dateStr);
-  return date.toLocaleDateString(undefined, { 
-    year: 'numeric', 
-    month: 'short', 
-    day: 'numeric' 
-  });
+  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 };
 
 const formatNumber = (num, decimals = 0) => {
@@ -336,28 +317,29 @@ const formatNumber = (num, decimals = 0) => {
   return numericValue.toLocaleString(undefined, { maximumFractionDigits: decimals });
 };
 
+// FIXED: Using template literals to ensure valid percentage strings instead of trailing slashes.
 const formatPercent = (num) => {
-  if (num === null || num === undefined) return '-';
-  return (num * 100).toFixed(2) + '%';
+  if (num == null) return '-';
+  return `${(num * 100).toFixed(2)}%`;
 };
 
 const formatTrend = (trend) => {
-  if (trend === null || trend === undefined) return 'N/A';
+  if (trend == null) return '-';
   const sign = trend > 0 ? '+' : '';
-  return sign + (trend * 100).toFixed(1) + '%';
+  return `${sign}${(trend * 100).toFixed(1)}%`;
 };
 
-const getGrowthColor = (growth) => {
-  if (growth === 'POSITIVE') return 'text-green-400';
+const getVerdictColor = (growth) => {
+  if (growth === 'POSITIVE') return 'text-emerald-400';
   if (growth === 'NEGATIVE') return 'text-red-400';
-  if (growth === 'STABLE') return 'text-yellow-400';
+  if (growth === 'STABLE') return 'text-amber-400';
   return 'text-gray-500';
 };
 
-const getBaselineColor = (performance) => {
-  if (performance === 'ABOVE') return 'text-green-400';
-  if (performance === 'BELOW') return 'text-red-400';
-  return 'text-yellow-400';
+const getBadgeColor = (performance) => {
+  if (performance === 'ABOVE') return 'text-emerald-400 bg-emerald-400/10';
+  if (performance === 'BELOW') return 'text-red-400 bg-red-400/10';
+  return 'text-amber-400 bg-amber-400/10';
 };
 
 const getBaselineSymbol = (performance) => {
@@ -366,15 +348,7 @@ const getBaselineSymbol = (performance) => {
   return '•';
 };
 
-onMounted(() => {
-  fetchMetrics();
-});
-
-onUnmounted(() => {
-  activeRequestController?.abort();
-});
-
-watch(() => authStore.activeBrand, () => {
-  fetchMetrics();
-});
+onMounted(fetchMetrics);
+onUnmounted(() => activeRequestController?.abort());
+watch(() => authStore.activeBrand, fetchMetrics);
 </script>
