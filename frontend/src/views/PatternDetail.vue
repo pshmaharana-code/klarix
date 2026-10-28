@@ -113,7 +113,13 @@ const loadDetail = async () => {
     const response = await fetch(`/api/v2/patterns/${route.params.patternId}`, { credentials: 'include' });
     const payload = await response.json().catch(() => null);
     if (!response.ok) throw new Error(payload?.message || 'Pattern not found');
+    
     detail.value = payload.data;
+    
+    // Explicitly read the database state from the backend payload
+    if (payload.data.isPromoted) {
+      isPromoted.value = true;
+    }
   } catch (cause) {
     error.value = cause.message || 'Pattern not found';
   } finally {
@@ -136,7 +142,6 @@ const promotePattern = async () => {
       throw new Error(payload.error?.message || 'Failed to promote pattern');
     }
     
-    // Successfully injected into Brand Memory
     isPromoted.value = true;
   } catch (cause) {
     alert(`Promotion failed: ${cause.message}`);
