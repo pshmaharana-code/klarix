@@ -29,11 +29,7 @@ const discoverBodySchema = z.object({
 brandPatternsRouter.get('/', requireBrandAccess, async (req, res) => {
   const parsed = listQuerySchema.safeParse(req.query);
   if (!parsed.success) {
-    return res.status(400).json({
-      success: false,
-      error: 'VALIDATION_ERROR',
-      details: parsed.error.flatten()
-    });
+    return res.status(400).json({ success: false, error: 'VALIDATION_ERROR', details: parsed.error.flatten() });
   }
 
   try {
@@ -45,15 +41,10 @@ brandPatternsRouter.get('/', requireBrandAccess, async (req, res) => {
   }
 });
 
-// POST /api/v2/brands/:brandId/patterns/discover
 brandPatternsRouter.post('/discover', requireBrandAccess, async (req, res) => {
   const parsed = discoverBodySchema.safeParse(req.body || {});
   if (!parsed.success) {
-    return res.status(400).json({
-      success: false,
-      error: 'VALIDATION_ERROR',
-      details: parsed.error.flatten()
-    });
+    return res.status(400).json({ success: false, error: 'VALIDATION_ERROR', details: parsed.error.flatten() });
   }
 
   const idempotencyHeader = req.get('Idempotency-Key');
@@ -77,11 +68,7 @@ brandPatternsRouter.post('/discover', requireBrandAccess, async (req, res) => {
       brandId: req.brand.id,
       type: 'DISCOVER_PATTERNS',
       idempotencyKey: `patterns:${req.brand.id}:${catalogueVersion}`,
-      input: {
-        force: parsed.data.force,
-        catalogueVersion,
-        requestIdempotencyKey: idempotencyHeader
-      }
+      input: { force: parsed.data.force, catalogueVersion, requestIdempotencyKey: idempotencyHeader }
     });
 
     return res.status(202).json({ success: true, data: { job: toPublicJob(job) } });
@@ -99,6 +86,15 @@ patternDetailRouter.get('/:patternId', async (req, res) => {
       return res.status(404).json({ success: false, error: 'NOT_FOUND', message: 'Pattern not found' });
     }
 
+    // Check if this specific pattern claim already exists in Brand Memory
+    const pattern = await prisma.pattern.findUnique({ where: { id: req.params.patternId } });
+    if (pattern) {
+      const existingMemory = await prisma.brandMemoryEntry.findFirst({
+        where: { brandId: pattern.brandId, statement: pattern.claim, status: 'ACTIVE' }
+      });
+      result.isPromoted = !!existingMemory;
+    }
+
     return res.json({ success: true, data: result });
   } catch (error) {
     console.error('[Patterns Route] Detail error:', error.name);
@@ -107,12 +103,10 @@ patternDetailRouter.get('/:patternId', async (req, res) => {
 });
 
 // POST /api/v2/patterns/:patternId/promote
-// Promotes a discovered pattern into an active Brand Memory entry
 patternDetailRouter.post('/:patternId/promote', async (req, res) => {
   try {
     const { patternId } = req.params;
 
-    // 1. Fetch the existing pattern
     const pattern = await prisma.pattern.findUnique({
       where: { id: patternId }
     });
@@ -121,7 +115,15 @@ patternDetailRouter.post('/:patternId/promote', async (req, res) => {
       return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Pattern not found' } });
     }
 
-    // 2. Inject it into the Brand Memory ecosystem as a verified rule
+    // Duplicate Prevention: Do not create a new memory if one already exists for this pattern
+    const existingMemory = await prisma.brandMemoryEntry.findFirst({
+      where: { brandId: pattern.brandId, statement: pattern.claim, status: 'ACTIVE' }
+    });
+
+    if (existingMemory) {
+      return res.status(200).json({ success: true, data: { memory: existingMemory } });
+    }
+
     const memory = await prisma.brandMemoryEntry.create({
       data: {
         brandId: pattern.brandId,
