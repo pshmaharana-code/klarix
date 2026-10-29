@@ -5,7 +5,7 @@
       <!-- Ambient styling -->
       <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[200px] h-1 bg-indigo-500 rounded-b-full shadow-[0_0_20px_rgba(99,102,241,0.5)]"></div>
 
-      <div class="text-center mb-10 mt-2">
+      <div class="text-center mb-8 mt-2">
         <h1 class="text-3xl font-black tracking-tight text-white mb-2">Klarix <span class="text-indigo-400 text-lg align-top">V2</span></h1>
         <p class="text-gray-400 text-sm font-medium">Authenticate to access your workspace</p>
       </div>
@@ -13,7 +13,21 @@
       <div v-if="error" class="mb-6 p-4 bg-red-900/20 border border-red-900/50 text-red-400 text-sm font-medium rounded-xl text-center shadow-sm">
         {{ error }}
       </div>
+      
+      <!-- Google OAuth Section -->
+      <div class="mb-6 flex justify-center">
+        <!-- The GoogleLogin component handles the popup and returns the token -->
+        <GoogleLogin :callback="handleGoogleLogin" />
+      </div>
 
+      <!-- Divider -->
+      <div class="relative flex items-center py-5">
+        <div class="flex-grow border-t border-gray-800"></div>
+        <span class="flex-shrink-0 mx-4 text-[10px] uppercase tracking-widest text-gray-500 font-bold">Or continue with email</span>
+        <div class="flex-grow border-t border-gray-800"></div>
+      </div>
+
+      <!-- Legacy Email/Password Form -->
       <form @submit.prevent="handleAuth" class="space-y-5">
         <div>
           <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Email Address</label>
@@ -76,13 +90,45 @@ const password = ref('');
 const loading = ref(false);
 const error = ref(null);
 
-// CRITICAL FIX: Instantly purge errors and input fields when the user toggles modes
 watch(isLogin, () => {
   error.value = null;
   email.value = '';
   password.value = '';
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Google Login Handler
+// ─────────────────────────────────────────────────────────────────────────────
+const handleGoogleLogin = async (response) => {
+  loading.value = true;
+  error.value = null;
+  
+  try {
+    // Send the Google JWT token to our backend for verification
+    const res = await fetch('/api/v2/auth/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: response.credential })
+    });
+    
+    const data = await res.json();
+    
+    if (res.ok) {
+      authStore.setUser(data.data.user);
+      router.push('/dashboard');
+    } else {
+      error.value = data.message || 'Google Authentication failed.';
+    }
+  } catch (e) {
+    error.value = 'Network error. Please make sure the backend is running.';
+  } finally {
+    loading.value = false;
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Legacy Email/Password Handler
+// ─────────────────────────────────────────────────────────────────────────────
 const handleAuth = async () => {
   loading.value = true;
   error.value = null;
