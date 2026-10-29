@@ -5,11 +5,13 @@ import { PrismaClient } from '@prisma/client';
 import { requireAuth } from '../../middleware/auth.js';
 import { loadConfig } from '../../lib/config.js';
 import { OAuth2Client } from 'google-auth-library';
+import twilio from 'twilio';
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mobile Number OTP Authentication (Passwordless)
@@ -43,10 +45,20 @@ router.post('/otp/request', async (req, res) => {
       }
     });
 
-    // 5. SIMULATE SMS SENDING (Replace this block with Twilio/AWS SNS later)
-    console.log(`\n=========================================`);
-    console.log(`📱 SMS TO ${phoneNumber}: Your Klarix V2 access code is ${otpCode}`);
-    console.log(`=========================================\n`);
+    // 5. DISPATCH LIVE SMS VIA TWILIO
+    try {
+      await twilioClient.messages.create({
+        body: `Your Klarix V2 access code is ${otpCode}. This code expires in 5 minutes.`,
+        from: process.env.TWILIO_PHONE_NUMBER,
+        to: phoneNumber
+      });
+      console.log(`[Klarix API] Successfully dispatched OTP via SMS to ${phoneNumber}`);
+    } catch (smsError) {
+      console.error('[Klarix API] Twilio Delivery Failed:', smsError);
+      // Rollback the token if the SMS failed, so they can try again
+      await prisma.otpToken.deleteMany({ where: { phone: phoneNumber } });
+      return res.status(502).json({ success: false, error: 'GATEWAY_ERROR', message: 'Failed to deliver SMS. Please check your phone number format.' });
+    }
 
     res.status(200).json({ success: true, message: 'OTP sent successfully' });
   } catch (error) {
@@ -149,7 +161,6 @@ router.post('/google', async (req, res) => {
     res.status(401).json({ success: false, error: 'UNAUTHENTICATED', message: 'Invalid Google token' });
   }
 });
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Traditional Manual Registration & Login (Legacy)
