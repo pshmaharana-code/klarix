@@ -7,6 +7,8 @@ export const useAuthStore = defineStore('auth', () => {
   const activeBrand = ref(null);
   const isInitializing = ref(true);
 
+  let initPromise = null;
+
   function setUser(userData) {
     user.value = userData;
     isAuthenticated.value = !!userData;
@@ -20,24 +22,28 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null;
     isAuthenticated.value = false;
     activeBrand.value = null;
+    // CRITICAL FIX: Reset the promise so session checks can run again after logout
+    initPromise = null;
   }
 
   function setInitializing(value) {
     isInitializing.value = value;
   }
 
-  let initPromise = null;
-
   function checkSession() {
     if (!initPromise) {
-      initPromise = fetch('/api/v2/auth/session', {credentials: 'include'})
+      initPromise = fetch('/api/v2/auth/session', { credentials: 'include' })
         .then(async res => {
           if (res.ok) {
             const { data } = await res.json();
             setUser(data.user);
+          } else {
+            clearAuth(); // Ensure clean state if session cookie is expired
           }
         })
-        .catch(() => {})
+        .catch(() => {
+          clearAuth();
+        })
         .finally(() => {
           setInitializing(false);
         });
