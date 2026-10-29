@@ -1,62 +1,69 @@
 <template>
-  <div class="min-h-screen bg-gray-950 flex items-center justify-center p-4 text-white">
-    <div class="w-full max-w-md bg-gray-900 border border-gray-800 rounded-2xl p-8 shadow-2xl">
-      <div class="text-center mb-8">
-        <h1 class="text-3xl font-bold tracking-tighter">Klarix V2</h1>
-        <p class="text-gray-400 mt-2 text-sm">Sign in to access your brand intelligence</p>
+  <div class="min-h-screen bg-gray-950 flex items-center justify-center p-4 text-white font-sans selection:bg-indigo-500 selection:text-white">
+    <div class="w-full max-w-md bg-gray-900 border border-gray-800 rounded-[2rem] p-8 sm:p-10 shadow-2xl relative overflow-hidden">
+      
+      <!-- Ambient styling -->
+      <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[200px] h-1 bg-indigo-500 rounded-b-full shadow-[0_0_20px_rgba(99,102,241,0.5)]"></div>
+
+      <div class="text-center mb-10 mt-2">
+        <h1 class="text-3xl font-black tracking-tight text-white mb-2">Klarix <span class="text-indigo-400 text-lg align-top">V2</span></h1>
+        <p class="text-gray-400 text-sm font-medium">Authenticate to access your workspace</p>
       </div>
 
-      <div v-if="error" class="mb-4 p-3 bg-red-900/50 border border-red-800 text-red-200 text-sm rounded-lg text-center">
+      <div v-if="error" class="mb-6 p-4 bg-red-900/20 border border-red-900/50 text-red-400 text-sm font-medium rounded-xl text-center shadow-sm">
         {{ error }}
       </div>
 
-      <form @submit.prevent="handleAuth" class="space-y-4">
+      <form @submit.prevent="handleAuth" class="space-y-5">
         <div>
-          <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Email</label>
+          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Email Address</label>
           <input 
             v-model="email" 
             type="email" 
             required 
-            class="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition-colors"
+            class="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white font-medium focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner placeholder-gray-600"
+            placeholder="ceo@brand.com"
           />
         </div>
         
         <div>
-          <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Password</label>
+          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Security Key</label>
           <input 
             v-model="password" 
             type="password" 
             required 
-            class="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition-colors"
+            class="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white font-medium focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner"
+            placeholder="••••••••"
           />
         </div>
 
-        <button 
-          type="submit" 
-          :disabled="loading"
-          class="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2.5 rounded-lg transition-colors mt-6"
-        >
-          {{ loading ? 'Processing...' : (isLogin ? 'Sign In' : 'Create Account') }}
-        </button>
+        <div class="pt-2">
+          <button 
+            type="submit" 
+            :disabled="loading"
+            class="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-800 disabled:text-gray-500 text-white font-bold py-3.5 rounded-xl transition-all shadow-[0_10px_25px_rgba(79,70,229,0.2)] hover:shadow-[0_15px_30px_rgba(79,70,229,0.3)] uppercase tracking-wider text-sm flex justify-center items-center gap-2"
+          >
+            <svg v-if="loading" class="animate-spin w-4 h-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            {{ loading ? 'Authenticating...' : (isLogin ? 'Sign In →' : 'Initialize Account →') }}
+          </button>
+        </div>
       </form>
 
-      <div class="mt-6 text-center">
-        <button @click="isLogin = !isLogin" class="text-sm text-gray-400 hover:text-white transition-colors">
+      <div class="mt-8 text-center border-t border-gray-800 pt-6">
+        <button @click="isLogin = !isLogin" class="text-xs font-bold text-gray-400 hover:text-white uppercase tracking-wider transition-colors">
           {{ isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in" }}
         </button>
       </div>
       
-      <div class="mt-8 text-center">
-        <router-link to="/" class="text-xs text-gray-500 hover:text-gray-300 transition-colors">
-          &larr; Back to V1 Public Home
-        </router-link>
-      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 
@@ -68,6 +75,13 @@ const email = ref('');
 const password = ref('');
 const loading = ref(false);
 const error = ref(null);
+
+// CRITICAL FIX: Instantly purge errors and input fields when the user toggles modes
+watch(isLogin, () => {
+  error.value = null;
+  email.value = '';
+  password.value = '';
+});
 
 const handleAuth = async () => {
   loading.value = true;
@@ -88,10 +102,10 @@ const handleAuth = async () => {
       authStore.setUser(data.data.user);
       router.push('/dashboard');
     } else {
-      error.value = data.message || 'Authentication failed';
+      error.value = data.message || 'Authentication failed. Please verify your credentials.';
     }
   } catch (e) {
-    error.value = 'Network error. Please make sure the backend is running.';
+    error.value = 'Neural connection failed. Please ensure the backend server is running.';
   } finally {
     loading.value = false;
   }
