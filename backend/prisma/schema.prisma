@@ -15,13 +15,13 @@ datasource db {
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum JobType {
-  SYNC_ACCOUNT 
-  IMPORT_CONTENT 
-  FETCH_METRICS 
-  FETCH_ACCOUNT_METRICS 
-  ANALYZE_CONTENT 
-  ANALYZE_BATCH 
-  DISCOVER_PATTERNS 
+  SYNC_ACCOUNT
+  IMPORT_CONTENT
+  FETCH_METRICS
+  FETCH_ACCOUNT_METRICS
+  ANALYZE_CONTENT
+  ANALYZE_BATCH
+  DISCOVER_PATTERNS
   UPDATE_MEMORY // Phase 7 addition
   GENERATE_STRATEGY // Phase 8 addition
   GENERATE_CONTENT_IDEAS // Phase 9 addition
@@ -68,14 +68,14 @@ enum AnalysisStatus {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model User {
-  id          String   @id @default(uuid())
-  email       String?  @unique
-  password    String?  // Optional for Google/OTP users
-  googleId    String?  @unique @map("google_id")
-  phoneNumber String?  @unique @map("phone_number")
-  
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id          String  @id @default(uuid())
+  email       String? @unique
+  password    String? // Optional for Google/OTP users
+  googleId    String? @unique @map("google_id")
+  phoneNumber String? @unique @map("phone_number")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   brands      Brand[]
   memberships BrandMember[]
@@ -97,7 +97,7 @@ model Brand {
   updatedAt        DateTime @updatedAt @map("updated_at")
 
   // Phase 1/2 relations — preserved
-  owner          User            @relation(fields: [ownerUserId], references: [id])
+  owner          User               @relation(fields: [ownerUserId], references: [id])
   members        BrandMember[]
   socialAccounts SocialAccount[]
   jobs           Job[]
@@ -307,24 +307,24 @@ model Content {
 
 /// Phase 4: Content Analysis results
 model ContentAnalysis {
-  id              String   @id @default(uuid())
-  contentId       String   @map("content_id")
-  version         String   @default("1.0")
-  status          AnalysisStatus @default(COMPLETED)
+  id        String         @id @default(uuid())
+  contentId String         @map("content_id")
+  version   String         @default("1.0")
+  status    AnalysisStatus @default(COMPLETED)
 
   // Structured results
-  visualFindings  Json?    @map("visual_findings")
-  contentFindings Json?    @map("content_findings")
-  perfFindings    Json?    @map("perf_findings")
+  visualFindings  Json? @map("visual_findings")
+  contentFindings Json? @map("content_findings")
+  perfFindings    Json? @map("perf_findings")
 
-  confidence      Float?
-  providerMeta    Json?    @map("provider_meta")
+  confidence   Float?
+  providerMeta Json?  @map("provider_meta")
 
-  completedAt     DateTime? @map("completed_at")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  content         Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
 
   @@unique([contentId, version])
   @@index([contentId, version])
@@ -379,8 +379,8 @@ model ContentMetricSnapshot {
   rawPayload                Json?    @map("raw_payload")
   createdAt                 DateTime @default(now()) @map("created_at")
 
-  content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
-  derivedMetrics ContentDerivedMetric[]
+  content         Content                @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  derivedMetrics  ContentDerivedMetric[]
   patternEvidence PatternEvidence[]
 
   // One snapshot per content per observation time — immutability enforced by DB
@@ -414,28 +414,28 @@ model SocialAccountMetricSnapshot {
 
 /// Phase 5: Content-level derived analytics.
 model ContentDerivedMetric {
-  id                  String   @id @default(uuid())
-  contentId           String   @map("content_id")
-  calculationVersion  String   @default("1.0") @map("calculation_version")
+  id                 String @id @default(uuid())
+  contentId          String @map("content_id")
+  calculationVersion String @default("1.0") @map("calculation_version")
 
   // Metric values
-  likeRate            Float?   @map("like_rate")
-  commentRate         Float?   @map("comment_rate")
-  saveRate            Float?   @map("save_rate")
-  shareRate           Float?   @map("share_rate")
-  interactionRate     Float?   @map("interaction_rate")
-  viewToReachRatio    Float?   @map("view_to_reach_ratio")
+  likeRate         Float? @map("like_rate")
+  commentRate      Float? @map("comment_rate")
+  saveRate         Float? @map("save_rate")
+  shareRate        Float? @map("share_rate")
+  interactionRate  Float? @map("interaction_rate")
+  viewToReachRatio Float? @map("view_to_reach_ratio")
 
   // Spec mentions percentile/baseline comparison
-  percentileComparison Json?   @map("percentile_comparison")
-  baselineComparison   Json?   @map("baseline_comparison")
+  percentileComparison Json? @map("percentile_comparison")
+  baselineComparison   Json? @map("baseline_comparison")
 
-  calculatedAt        DateTime @default(now()) @map("calculated_at")
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
+  calculatedAt DateTime @default(now()) @map("calculated_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  sourceSnapshotId    String?  @map("source_snapshot_id")
-  sourceSnapshot      ContentMetricSnapshot? @relation(fields: [sourceSnapshotId], references: [id], onDelete: SetNull)
+  sourceSnapshotId String?                @map("source_snapshot_id")
+  sourceSnapshot   ContentMetricSnapshot? @relation(fields: [sourceSnapshotId], references: [id], onDelete: SetNull)
 
   content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
 
@@ -460,7 +460,7 @@ model Pattern {
   createdAt         DateTime  @default(now()) @map("created_at")
   supersededAt      DateTime? @map("superseded_at")
 
-  brand    Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  brand    Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
   evidence PatternEvidence[]
 
   @@index([brandId, status])
@@ -469,13 +469,13 @@ model Pattern {
 
 /// Evidence rows are required before a pattern can be ACTIVE.
 model PatternEvidence {
-  id               String                @id @default(uuid())
-  patternId        String                @map("pattern_id")
-  contentId        String?               @map("content_id")
-  metricSnapshotId String?               @map("metric_snapshot_id")
+  id               String   @id @default(uuid())
+  patternId        String   @map("pattern_id")
+  contentId        String?  @map("content_id")
+  metricSnapshotId String?  @map("metric_snapshot_id")
   contribution     Float?
   summary          String
-  createdAt        DateTime              @default(now()) @map("created_at")
+  createdAt        DateTime @default(now()) @map("created_at")
 
   pattern        Pattern                @relation(fields: [patternId], references: [id], onDelete: Cascade)
   content        Content?               @relation(fields: [contentId], references: [id], onDelete: SetNull)
@@ -485,7 +485,6 @@ model PatternEvidence {
   @@index([contentId])
   @@map("pattern_evidence")
 }
-
 
 /// Phase 7: Brand Memory Engine
 model BrandMemoryEntry {
@@ -507,8 +506,6 @@ model BrandMemoryEntry {
   @@index([brandId, domain, status])
   @@map("brand_memory_entries")
 }
-
-
 
 /// Phase 8: Strategy Engine Blueprint
 model Strategy {
@@ -535,26 +532,24 @@ model Strategy {
   @@map("strategies")
 }
 
-
-
 /// Phase 9: Content Idea Generator
 model ContentIdea {
-  id          String   @id @default(uuid())
-  brandId     String   @map("brand_id")
-  strategyId  String   @map("strategy_id")
-  title       String
-  hook        String
-  pillar      String
-  format      String
-  rationale   String
-  sourceRefs  Json?    @map("source_refs")
-  status      String   @default("DRAFT")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(uuid())
+  brandId    String   @map("brand_id")
+  strategyId String   @map("strategy_id")
+  title      String
+  hook       String
+  pillar     String
+  format     String
+  rationale  String
+  sourceRefs Json?    @map("source_refs")
+  status     String   @default("DRAFT")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
-  brand    Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  brand   Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
   // Phase 9 addition
-  scripts  Script[]
+  scripts Script[]
 
   @@index([brandId, status])
   @@map("content_ideas")
@@ -586,7 +581,7 @@ model Script {
 model OtpToken {
   id        String   @id @default(uuid())
   phone     String
-  code      String   // Stores the hashed 6-digit pin
+  code      String // Stores the hashed 6-digit pin
   expiresAt DateTime @map("expires_at")
   createdAt DateTime @default(now()) @map("created_at")
 
