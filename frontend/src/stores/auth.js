@@ -12,6 +12,10 @@ export const useAuthStore = defineStore('auth', () => {
   function setUser(userData) {
     user.value = userData;
     isAuthenticated.value = !!userData;
+    isInitializing.value = false;
+    if (userData) {
+      initPromise = Promise.resolve();
+    }
   }
 
   function setActiveBrand(brandData) {
@@ -22,8 +26,20 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null;
     isAuthenticated.value = false;
     activeBrand.value = null;
-    // CRITICAL FIX: Reset the promise so session checks can run again after logout
     initPromise = null;
+  }
+
+  async function logout() {
+    try {
+      await fetch('/api/v2/auth/logout', {
+        method: 'POST',
+        credentials: 'include'
+      });
+    } catch (e) {
+      // Proceed with local cleanup even if network fails
+    } finally {
+      clearAuth();
+    }
   }
 
   function setInitializing(value) {
@@ -38,7 +54,7 @@ export const useAuthStore = defineStore('auth', () => {
             const { data } = await res.json();
             setUser(data.user);
           } else {
-            clearAuth(); // Ensure clean state if session cookie is expired
+            clearAuth();
           }
         })
         .catch(() => {
@@ -66,6 +82,7 @@ export const useAuthStore = defineStore('auth', () => {
     setUser,
     setActiveBrand,
     clearAuth,
+    logout,
     setInitializing,
     checkSession,
     triggerSyncUpdate
