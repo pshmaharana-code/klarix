@@ -1,5 +1,6 @@
 import express from 'express';
 import { z } from 'zod';
+import { requireAuth } from '../../middleware/auth.js';
 import { requireBrandAccess } from '../../middleware/brandContext.js';
 import { createAndEnqueueJob } from '../../jobs/jobService.js';
 import { toPublicJob } from '../../lib/publicJob.js';
@@ -25,6 +26,23 @@ const discoverBodySchema = z.object({
   force: z.boolean().default(false)
 });
 
+// Helper: Verify that the logged-in user owns or is a member of the pattern's brand
+async function getAuthorizedPattern(patternId, userId) {
+  if (!patternId || !userId) return null;
+
+  return prisma.pattern.findFirst({
+    where: {
+      id: patternId,
+      brand: {
+        OR: [
+          { ownerUserId: userId },
+          { members: { some: { userId } } }
+        ]
+      }
+    }
+  });
+}
+
 // GET /api/v2/brands/:brandId/patterns
 brandPatternsRouter.get('/', requireBrandAccess, async (req, res) => {
   const parsed = listQuerySchema.safeParse(req.query);
@@ -41,6 +59,7 @@ brandPatternsRouter.get('/', requireBrandAccess, async (req, res) => {
   }
 });
 
+// POST /api/v2/brands/:brandId/patterns/discover
 brandPatternsRouter.post('/discover', requireBrandAccess, async (req, res) => {
   const parsed = discoverBodySchema.safeParse(req.body || {});
   if (!parsed.success) {
@@ -79,21 +98,22 @@ brandPatternsRouter.post('/discover', requireBrandAccess, async (req, res) => {
 });
 
 // GET /api/v2/patterns/:patternId
-patternDetailRouter.get('/:patternId', async (req, res) => {
+patternDetailRouter.get('/:patternId', requireAuth, async (req, res) => {
   try {
-    const result = await getPatternDetail(req.params.patternId, req.user.id);
+    const pattern = await getAuthorizedPattern(req.params.patternId, req.user.id);
+    if (!pattern) {
+      return res.status(404).json({ success: false, error: 'NOT_FOUND', message: 'Pattern not found' });
+    }
+
+    const result = await getPatternDetail(pattern.id, req.user.id);
     if (!result || result.evidence.length < 1) {
       return res.status(404).json({ success: false, error: 'NOT_FOUND', message: 'Pattern not found' });
     }
 
-    // Check if this specific pattern claim already exists in Brand Memory
-    const pattern = await prisma.pattern.findUnique({ where: { id: req.params.patternId } });
-    if (pattern) {
-      const existingMemory = await prisma.brandMemoryEntry.findFirst({
-        where: { brandId: pattern.brandId, statement: pattern.claim, status: 'ACTIVE' }
-      });
-      result.isPromoted = !!existingMemory;
-    }
+    const existingMemory = await prisma.brandMemoryEntry.findFirst({
+      where: { brandId: pattern.brandId, statement: pattern.claim, status: 'ACTIVE' }
+    });
+    result.isPromoted = !!existingMemory;
 
     return res.json({ success: true, data: result });
   } catch (error) {
@@ -103,19 +123,18 @@ patternDetailRouter.get('/:patternId', async (req, res) => {
 });
 
 // POST /api/v2/patterns/:patternId/promote
-patternDetailRouter.post('/:patternId/promote', async (req, res) => {
+patternDetailRouter.post('/:patternId/promote', requireAuth, async (req, res) => {
   try {
     const { patternId } = req.params;
 
-    const pattern = await prisma.pattern.findUnique({
-      where: { id: patternId }
-    });
-
+    const pattern = await getAuthorizedPattern(patternId, req.user.id);
     if (!pattern) {
-      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Pattern not found' } });
+      return res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Pattern not found' }
+      });
     }
 
-    // Duplicate Prevention: Do not create a new memory if one already exists for this pattern
     const existingMemory = await prisma.brandMemoryEntry.findFirst({
       where: { brandId: pattern.brandId, statement: pattern.claim, status: 'ACTIVE' }
     });
@@ -136,7 +155,10 @@ patternDetailRouter.post('/:patternId/promote', async (req, res) => {
     res.status(200).json({ success: true, data: { memory } });
   } catch (error) {
     console.error('[API] Error promoting pattern to memory:', error);
-    res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: error.message } });
+    res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to promote pattern to memory' }
+    });
   }
 });
 
