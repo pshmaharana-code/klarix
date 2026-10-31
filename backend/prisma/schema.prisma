@@ -577,14 +577,26 @@ model Script {
   @@map("scripts")
 }
 
-/// Tracks short-lived 6-digit OTP codes for mobile authentication
+/// Tracks short-lived 6-digit OTP codes for email authentication
 model OtpToken {
   id        String   @id @default(uuid())
-  phone     String
+  email     String
   code      String // Stores the hashed 6-digit pin
   expiresAt DateTime @map("expires_at")
   createdAt DateTime @default(now()) @map("created_at")
 
-  @@index([phone])
+  @@index([email])
   @@map("otp_tokens")
+}
+
+/// Tracks secure tokens for resetting forgotten passwords
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  email     String
+  token     String   @unique // Hashed URL-safe token
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([email])
+  @@map("password_reset_tokens")
 }
