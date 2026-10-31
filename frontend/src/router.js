@@ -1,34 +1,18 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from './stores/auth'
-import Home from './views/Home.vue'
 import Dashboard from './views/Dashboard.vue'
 import Connect from './views/Connect.vue'
 
 const routes = [
   {
     path: '/',
-    name: 'Home',
-    component: Home
-  },
-  {
-    path: '/analyse',
-    name: 'Analyse',
-    component: () => import('./views/Analyse.vue')
-  },
-  {
-    path: '/demo',
-    name: 'Demo',
-    component: () => import('./views/Demo.vue')
-  },
-  {
-    path: '/about',
-    name: 'About',
-    component: () => import('./views/About.vue')
+    redirect: '/dashboard'
   },
   {
     path: '/login',
     name: 'Login',
-    component: () => import('./views/Login.vue')
+    component: () => import('./views/Login.vue'),
+    meta: { guestOnly: true }
   },
   {
     path: '/dashboard',
@@ -95,6 +79,11 @@ const routes = [
     name: 'StrategyScript',
     component: () => import('./views/StrategyScript.vue'),
     meta: { requiresAuth: true }
+  },
+  {
+    // Catch-all fallback for any invalid or legacy URLs
+    path: '/:pathMatch(.*)*',
+    redirect: '/dashboard'
   }
 ]
 
@@ -113,17 +102,22 @@ export const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
-  const authStore = useAuthStore();
+  const authStore = useAuthStore()
 
+  // Always verify the HTTP-only session cookie with the backend on initial load
   if (authStore.isInitializing) {
-    await authStore.checkSession();
+    await authStore.checkSession()
   }
 
+  // Block unauthenticated users from accessing any protected V2 route
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    return { name: 'Login' };
-  } else if (to.name === 'Login' && authStore.isAuthenticated) {
-    return { name: 'Dashboard' };
+    return { name: 'Login' }
   }
 
-  return true;
-});
+  // Redirect already-authenticated users away from the Login screen
+  if (to.meta.guestOnly && authStore.isAuthenticated) {
+    return { name: 'Dashboard' }
+  }
+
+  return true
+})
