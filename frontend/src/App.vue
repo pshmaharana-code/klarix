@@ -6,25 +6,29 @@ import AppShell from './components/layout/AppShell.vue'
 
 const route = useRoute()
 const authStore = useAuthStore()
-const isV2App = computed(() => route.meta.requiresAuth)
+
+// Render the V2 workspace shell on protected routes, and plain view on /login
+const showWorkspaceShell = computed(() => Boolean(route.meta.requiresAuth) && authStore.isAuthenticated)
 
 onMounted(async () => {
-  await authStore.checkSession();
+  if (authStore.isInitializing) {
+    await authStore.checkSession()
+  }
 })
 </script>
 
 <template>
-  <div v-if="authStore.isInitializing" class="min-h-screen flex items-center justify-center bg-gray-950 text-white">
-    <div class="animate-pulse font-medium tracking-wide">Initializing Klarix...</div>
-  </div>
-  <template v-else>
-    <AppShell v-if="isV2App" />
-    <div v-else class="min-h-screen bg-[#FAFAF9] text-[#0A0A0A]">
-      <router-view />
+  <div
+    v-if="authStore.isInitializing"
+    class="min-h-screen flex items-center justify-center bg-gray-950 text-white font-sans"
+  >
+    <div class="animate-pulse font-medium tracking-wide text-gray-400">
+      Initializing Klarix V2...
     </div>
-  </template>
-</template>
+  </div>
 
-<style>
-/* Base overrides for light theme */
-</style>
+  <div v-else class="min-h-screen bg-gray-950 text-white font-sans">
+    <AppShell v-if="showWorkspaceShell" />
+    <router-view v-else />
+  </div>
+</template>

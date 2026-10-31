@@ -20,7 +20,6 @@ export const requireAuth = async (req, res, next) => {
       algorithms: ['HS256']
     });
 
-    // Strictly enforce that only full session tokens can authenticate API requests
     if (!decoded || !decoded.userId || decoded.purpose !== 'session') {
       return res.status(401).json({
         success: false,
@@ -29,7 +28,6 @@ export const requireAuth = async (req, res, next) => {
       });
     }
 
-    // Explicitly select safe fields so the password hash is never attached to req.user
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
       select: {
@@ -56,6 +54,48 @@ export const requireAuth = async (req, res, next) => {
       success: false,
       error: 'UNAUTHENTICATED',
       message: 'Invalid or expired session token'
+    });
+  }
+};
+
+// Enforces that req.user owns or is a member of req.params.brandId
+export const requireBrandAccess = async (req, res, next) => {
+  try {
+    const { brandId } = req.params;
+    if (!brandId) {
+      return res.status(400).json({
+        success: false,
+        error: 'VALIDATION_ERROR',
+        message: 'Brand ID is required'
+      });
+    }
+
+    const brand = await prisma.brand.findFirst({
+      where: {
+        id: brandId,
+        OR: [
+          { ownerUserId: req.user.id },
+          { members: { some: { userId: req.user.id } } }
+        ]
+      }
+    });
+
+    if (!brand) {
+      return res.status(403).json({
+        success: false,
+        error: 'FORBIDDEN',
+        message: 'Access denied: You do not have permission to access this brand workspace.'
+      });
+    }
+
+    req.brand = brand;
+    next();
+  } catch (error) {
+    console.error('[Klarix Security] Brand access verification error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'INTERNAL_ERROR',
+      message: 'Failed to verify workspace permissions'
     });
   }
 };
