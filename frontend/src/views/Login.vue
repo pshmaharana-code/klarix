@@ -102,13 +102,35 @@
         <form v-if="otpState === 'request'" @submit.prevent="handleOtpRequest" class="space-y-5">
           <div>
             <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Mobile Number</label>
-            <input 
-              v-model="phoneNumber" 
-              type="tel" 
-              required 
-              class="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white font-medium focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner placeholder-gray-600"
-              placeholder="+1 (555) 000-0000"
-            />
+            <div class="flex bg-gray-950 border border-gray-800 rounded-xl overflow-hidden focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 transition-all shadow-inner">
+              
+              <!-- Country Code Dropdown -->
+              <div class="relative flex items-center bg-gray-900 border-r border-gray-800">
+                <select 
+                  v-model="countryCode" 
+                  class="h-full py-3.5 pl-4 pr-8 bg-transparent text-gray-300 font-bold text-sm appearance-none focus:outline-none cursor-pointer z-10"
+                >
+                  <option value="+1" class="bg-gray-900 text-white">🇺🇸 +1</option>
+                  <option value="+44" class="bg-gray-900 text-white">🇬🇧 +44</option>
+                  <option value="+61" class="bg-gray-900 text-white">🇦🇺 +61</option>
+                  <option value="+91" class="bg-gray-900 text-white">🇮🇳 +91</option>
+                  <option value="+971" class="bg-gray-900 text-white">🇦🇪 +971</option>
+                </select>
+                <!-- Custom Dropdown Arrow -->
+                <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
+              </div>
+
+              <!-- Phone Number Input -->
+              <input 
+                v-model="rawPhoneNumber" 
+                type="tel" 
+                required 
+                class="w-full bg-transparent px-4 py-3.5 text-white font-medium focus:outline-none placeholder-gray-600"
+                placeholder="98765 43210"
+              />
+            </div>
           </div>
           
           <div class="pt-2">
@@ -129,7 +151,7 @@
         <!-- STEP 2: Enter 6-Digit PIN -->
         <form v-if="otpState === 'verify'" @submit.prevent="handleOtpVerify" class="space-y-5">
           <div class="text-center mb-6">
-            <p class="text-sm text-gray-400">Enter the 6-digit access code sent to <strong class="text-white block mt-1">{{ phoneNumber }}</strong></p>
+            <p class="text-sm text-gray-400">Enter the 6-digit access code sent to <strong class="text-white block mt-1">{{ countryCode }} {{ rawPhoneNumber }}</strong></p>
           </div>
           
           <div>
@@ -188,7 +210,8 @@ const otpState = ref('request'); // For OTP tab ('request' vs 'verify')
 // Form Data
 const email = ref('');
 const password = ref('');
-const phoneNumber = ref('');
+const countryCode = ref('+91');
+const rawPhoneNumber = ref('');
 const otpCode = ref('');
 
 const loading = ref(false);
@@ -272,11 +295,14 @@ const handleOtpRequest = async () => {
   error.value = null;
   successMsg.value = null;
   
+  const cleanNumber = rawPhoneNumber.value.replace(/\s+/g, '');
+  const fullPhoneNumber = `${countryCode.value}${cleanNumber}`;
+  
   try {
     const res = await fetch('/api/v2/auth/otp/request', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phoneNumber: phoneNumber.value })
+      body: JSON.stringify({ phoneNumber: fullPhoneNumber })
     });
     
     const data = await res.json();
@@ -298,11 +324,14 @@ const handleOtpVerify = async () => {
   loading.value = true;
   error.value = null;
   
+  const cleanNumber = rawPhoneNumber.value.replace(/\s+/g, '');
+  const fullPhoneNumber = `${countryCode.value}${cleanNumber}`;
+  
   try {
     const res = await fetch('/api/v2/auth/otp/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phoneNumber: phoneNumber.value, code: otpCode.value })
+      body: JSON.stringify({ phoneNumber: fullPhoneNumber, code: otpCode.value })
     });
     
     const data = await res.json();
