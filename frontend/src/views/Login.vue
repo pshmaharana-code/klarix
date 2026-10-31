@@ -295,8 +295,13 @@ const handleOtpRequest = async () => {
   error.value = null;
   successMsg.value = null;
   
-  const cleanNumber = rawPhoneNumber.value.replace(/\s+/g, '');
-  const fullPhoneNumber = `${countryCode.value}${cleanNumber}`;
+  // EXTRA SECURE PARSING: 
+  // 1. Extract only the '+' and numbers from countryCode
+  const safeCountry = countryCode.value.replace(/[^\d+]/g, '');
+  // 2. Extract only numbers from the raw input
+  const safeNumber = rawPhoneNumber.value.replace(/\D/g, ''); 
+  // 3. Combine perfectly into E.164 format (e.g., +919861105106)
+  const fullPhoneNumber = `${safeCountry}${safeNumber}`;
   
   try {
     const res = await fetch('/api/v2/auth/otp/request', {

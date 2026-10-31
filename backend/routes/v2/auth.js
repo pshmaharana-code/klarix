@@ -5,24 +5,24 @@ import { PrismaClient } from '@prisma/client';
 import { requireAuth } from '../../middleware/auth.js';
 import { loadConfig } from '../../lib/config.js';
 import { OAuth2Client } from 'google-auth-library';
-import twilio from 'twilio';
+import { Resend } from 'resend';
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Mobile Number OTP Authentication (Passwordless)
+// Email OTP Authentication (Passwordless)
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Request OTP
 router.post('/otp/request', async (req, res) => {
   try {
-    const { phoneNumber } = req.body;
-    if (!phoneNumber) {
-      return res.status(400).json({ success: false, error: 'VALIDATION_ERROR', message: 'Phone number is required' });
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'VALIDATION_ERROR', message: 'Email address is required' });
     }
 
     // 1. Generate a 6-digit secure PIN
@@ -31,33 +31,46 @@ router.post('/otp/request', async (req, res) => {
     // 2. Hash the PIN so it is never stored in plain text
     const hashedCode = await bcrypt.hash(otpCode, 10);
 
-    // 3. Clear any existing unexpired tokens for this number to prevent spam
+    // 3. Clear any existing unexpired tokens for this email to prevent spam
     await prisma.otpToken.deleteMany({
-      where: { phone: phoneNumber }
+      where: { email: email } // Changed from phone to email
     });
 
     // 4. Save to database with a 5-minute expiration
     await prisma.otpToken.create({
       data: {
-        phone: phoneNumber,
+        email: email, // Changed from phone to email
         code: hashedCode,
         expiresAt: new Date(Date.now() + 5 * 60 * 1000)
       }
     });
 
-    // 5. DISPATCH LIVE SMS VIA TWILIO
+    // 5. DISPATCH LIVE EMAIL VIA RESEND
     try {
-      await twilioClient.messages.create({
-        body: `Your Klarix V2 access code is ${otpCode}. This code expires in 5 minutes.`,
-        from: process.env.TWILIO_PHONE_NUMBER,
-        to: phoneNumber
+      const { data, error } = await resend.emails.send({
+        from: 'Klarix Security <onboarding@resend.dev>',
+        to: email,
+        subject: 'Your Klarix Verification Code',
+        html: `
+          <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto;">
+            <h2>Klarix V2 Authentication</h2>
+            <p>Your one-time access code is:</p>
+            <h1 style="letter-spacing: 5px; font-size: 32px; background: #f4f4f5; padding: 20px; text-align: center; border-radius: 8px;">${otpCode}</h1>
+            <p style="color: #666; font-size: 14px;">This code will expire in 5 minutes. Do not share this with anyone.</p>
+          </div>
+        `
       });
-      console.log(`[Klarix API] Successfully dispatched OTP via SMS to ${phoneNumber}`);
-    } catch (smsError) {
-      console.error('[Klarix API] Twilio Delivery Failed:', smsError);
-      // Rollback the token if the SMS failed, so they can try again
-      await prisma.otpToken.deleteMany({ where: { phone: phoneNumber } });
-      return res.status(502).json({ success: false, error: 'GATEWAY_ERROR', message: 'Failed to deliver SMS. Please check your phone number format.' });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      console.log(`[Klarix API] Successfully dispatched OTP via Email to ${email}`);
+    } catch (emailError) {
+      console.error('[Klarix API] Resend Delivery Failed:', emailError);
+      // Rollback the token if the email failed, so they can try again
+      await prisma.otpToken.deleteMany({ where: { email: email } });
+      return res.status(502).json({ success: false, error: 'GATEWAY_ERROR', message: 'Failed to deliver verification email. Please try again.' });
     }
 
     res.status(200).json({ success: true, message: 'OTP sent successfully' });
@@ -70,14 +83,14 @@ router.post('/otp/request', async (req, res) => {
 // Verify OTP
 router.post('/otp/verify', async (req, res) => {
   try {
-    const { phoneNumber, code } = req.body;
-    if (!phoneNumber || !code) {
-      return res.status(400).json({ success: false, error: 'VALIDATION_ERROR', message: 'Phone number and OTP code are required' });
+    const { email, code } = req.body;
+    if (!email || !code) {
+      return res.status(400).json({ success: false, error: 'VALIDATION_ERROR', message: 'Email and OTP code are required' });
     }
 
-    // 1. Find the latest OTP token for this number
+    // 1. Find the latest OTP token for this email
     const otpRecord = await prisma.otpToken.findFirst({
-      where: { phone: phoneNumber },
+      where: { email: email }, // Changed from phone to email
       orderBy: { createdAt: 'desc' }
     });
 
@@ -102,12 +115,12 @@ router.post('/otp/verify', async (req, res) => {
 
     // 5. Find or Create the User (JIT Provisioning)
     let user = await prisma.user.findFirst({
-      where: { phoneNumber: phoneNumber }
+      where: { email: email }
     });
 
     if (!user) {
       user = await prisma.user.create({
-        data: { phoneNumber: phoneNumber }
+        data: { email: email }
       });
     }
 
@@ -121,7 +134,7 @@ router.post('/otp/verify', async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
-    res.status(200).json({ success: true, data: { user: { id: user.id, phoneNumber: user.phoneNumber } } });
+    res.status(200).json({ success: true, data: { user: { id: user.id, email: user.email } } });
   } catch (error) {
     console.error('[Klarix API] OTP Verify Error:', error);
     res.status(500).json({ success: false, error: 'INTERNAL_ERROR', message: 'An error occurred during verification' });
@@ -172,47 +185,4 @@ router.post('/register', async (req, res) => {
     if (!email || !password) return res.status(400).json({ success: false, error: 'VALIDATION_ERROR', message: 'Email and password are required' });
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) return res.status(409).json({ success: false, error: 'CONFLICT', message: 'User already exists' });
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await prisma.user.create({ data: { email, password: hashedPassword } });
-
-    const token = jwt.sign({ userId: user.id }, loadConfig().jwtSecret, { expiresIn: '7d' });
-    res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict', maxAge: 7 * 24 * 60 * 60 * 1000 });
-    res.status(201).json({ success: true, data: { user: { id: user.id, email: user.email } } });
-  } catch (error) {
-    console.error('[Klarix API] Registration Error:', error);
-    res.status(500).json({ success: false, error: 'INTERNAL_ERROR', message: 'An error occurred during registration' });
-  }
-});
-
-router.post('/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ success: false, error: 'VALIDATION_ERROR', message: 'Email and password are required' });
-
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || !user.password) return res.status(401).json({ success: false, error: 'UNAUTHENTICATED', message: 'Invalid credentials or please sign in with Google.' });
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ success: false, error: 'UNAUTHENTICATED', message: 'Invalid credentials' });
-
-    const token = jwt.sign({ userId: user.id }, loadConfig().jwtSecret, { expiresIn: '7d' });
-    res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict', maxAge: 7 * 24 * 60 * 60 * 1000 });
-    res.status(200).json({ success: true, data: { user: { id: user.id, email: user.email } } });
-  } catch (error) {
-    console.error('[Klarix API] Login Error:', error);
-    res.status(500).json({ success: false, error: 'INTERNAL_ERROR', message: 'An error occurred during login' });
-  }
-});
-
-router.post('/logout', (req, res) => {
-  res.clearCookie('token');
-  res.status(200).json({ success: true, message: 'Logged out successfully' });
-});
-
-router.get('/session', requireAuth, (req, res) => {
-  res.status(200).json({ success: true, data: { user: { id: req.user.id, email: req.user.email, phoneNumber: req.user.phoneNumber } } });
-});
-
-export default router;
+    if (existingUser) return res.status(409).json({ success: false, error: 'CONFLICT', message: 'User
