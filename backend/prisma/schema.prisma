@@ -68,11 +68,12 @@ enum AnalysisStatus {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model User {
-  id          String  @id @default(uuid())
-  email       String? @unique
-  password    String? // Optional for Google/OTP users
-  googleId    String? @unique @map("google_id")
-  phoneNumber String? @unique @map("phone_number")
+  id            String  @id @default(uuid())
+  email         String? @unique
+  emailVerified Boolean @default(false) @map("email_verified") // <-- ADD THIS LINE
+  password      String?
+  googleId      String? @unique @map("google_id")
+  phoneNumber   String? @unique @map("phone_number")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
