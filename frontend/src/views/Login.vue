@@ -7,7 +7,7 @@
 
       <div class="text-center mb-8 mt-2">
         <h1 class="text-3xl font-black tracking-tight text-white mb-2">Klarix <span class="text-indigo-400 text-lg align-top">V2</span></h1>
-        <p class="text-gray-400 text-sm font-medium">Authenticate to access your workspace</p>
+        <p class="text-gray-400 text-sm font-medium">{{ authState === 'forgot' ? 'Reset your security key' : 'Authenticate to access your workspace' }}</p>
       </div>
 
       <div v-if="error" class="mb-6 p-4 bg-red-900/20 border border-red-900/50 text-red-400 text-sm font-medium rounded-xl text-center shadow-sm">
@@ -17,8 +17,8 @@
         {{ successMsg }}
       </div>
 
-      <!-- Auth Method Toggle -->
-      <div class="flex p-1 mb-8 bg-gray-950 rounded-xl border border-gray-800 shadow-inner">
+      <!-- Auth Method Toggle (Hidden during Forgot Password flow) -->
+      <div v-if="authState !== 'forgot'" class="flex p-1 mb-8 bg-gray-950 rounded-xl border border-gray-800 shadow-inner">
         <button 
           @click="authMethod = 'email'" 
           :class="['flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-colors', authMethod === 'email' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300']"
@@ -29,14 +29,14 @@
           @click="authMethod = 'otp'" 
           :class="['flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-colors', authMethod === 'otp' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300']"
         >
-          Mobile OTP
+          Login with Code
         </button>
       </div>
 
       <!-- ───────────────────────────────────────────────────────────────── -->
       <!-- TAB 1: EMAIL & GOOGLE -->
       <!-- ───────────────────────────────────────────────────────────────── -->
-      <div v-if="authMethod === 'email'" class="animate-fade-in">
+      <div v-if="authState === 'login' && authMethod === 'email'" class="animate-fade-in">
         
         <div class="mb-6 flex justify-center">
           <GoogleLogin :callback="handleGoogleLogin" />
@@ -61,7 +61,12 @@
           </div>
           
           <div>
-            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Security Key</label>
+            <div class="flex justify-between items-center mb-1.5">
+              <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest">Security Key</label>
+              <button type="button" @click="authState = 'forgot'; error = null; successMsg = null;" class="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold tracking-wider transition-colors">
+                Forgot password?
+              </button>
+            </div>
             <input 
               v-model="password" 
               type="password" 
@@ -94,43 +99,21 @@
       </div>
 
       <!-- ───────────────────────────────────────────────────────────────── -->
-      <!-- TAB 2: MOBILE OTP -->
+      <!-- TAB 2: EMAIL OTP (PASSWORDLESS) -->
       <!-- ───────────────────────────────────────────────────────────────── -->
-      <div v-if="authMethod === 'otp'" class="animate-fade-in">
+      <div v-if="authState === 'login' && authMethod === 'otp'" class="animate-fade-in">
         
-        <!-- STEP 1: Enter Phone Number -->
+        <!-- STEP 1: Enter Email -->
         <form v-if="otpState === 'request'" @submit.prevent="handleOtpRequest" class="space-y-5">
           <div>
-            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Mobile Number</label>
-            <div class="flex bg-gray-950 border border-gray-800 rounded-xl overflow-hidden focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 transition-all shadow-inner">
-              
-              <!-- Country Code Dropdown -->
-              <div class="relative flex items-center bg-gray-900 border-r border-gray-800">
-                <select 
-                  v-model="countryCode" 
-                  class="h-full py-3.5 pl-4 pr-8 bg-transparent text-gray-300 font-bold text-sm appearance-none focus:outline-none cursor-pointer z-10"
-                >
-                  <option value="+1" class="bg-gray-900 text-white">🇺🇸 +1</option>
-                  <option value="+44" class="bg-gray-900 text-white">🇬🇧 +44</option>
-                  <option value="+61" class="bg-gray-900 text-white">🇦🇺 +61</option>
-                  <option value="+91" class="bg-gray-900 text-white">🇮🇳 +91</option>
-                  <option value="+971" class="bg-gray-900 text-white">🇦🇪 +971</option>
-                </select>
-                <!-- Custom Dropdown Arrow -->
-                <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
-                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                </div>
-              </div>
-
-              <!-- Phone Number Input -->
-              <input 
-                v-model="rawPhoneNumber" 
-                type="tel" 
-                required 
-                class="w-full bg-transparent px-4 py-3.5 text-white font-medium focus:outline-none placeholder-gray-600"
-                placeholder="98765 43210"
-              />
-            </div>
+            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Email Address</label>
+            <input 
+              v-model="otpEmail" 
+              type="email" 
+              required 
+              class="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white font-medium focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner placeholder-gray-600"
+              placeholder="ceo@brand.com"
+            />
           </div>
           
           <div class="pt-2">
@@ -151,7 +134,7 @@
         <!-- STEP 2: Enter 6-Digit PIN -->
         <form v-if="otpState === 'verify'" @submit.prevent="handleOtpVerify" class="space-y-5">
           <div class="text-center mb-6">
-            <p class="text-sm text-gray-400">Enter the 6-digit access code sent to <strong class="text-white block mt-1">{{ countryCode }} {{ rawPhoneNumber }}</strong></p>
+            <p class="text-sm text-gray-400">Enter the 6-digit access code sent to <strong class="text-white block mt-1">{{ otpEmail }}</strong></p>
           </div>
           
           <div>
@@ -183,11 +166,54 @@
           
           <div class="text-center mt-4">
             <button type="button" @click="otpState = 'request'; error = null" class="text-xs font-bold text-gray-500 hover:text-gray-300 uppercase tracking-wider transition-colors">
-              Change Mobile Number
+              Change Email Address
             </button>
           </div>
         </form>
+      </div>
 
+      <!-- ───────────────────────────────────────────────────────────────── -->
+      <!-- TAB 3: FORGOT PASSWORD -->
+      <!-- ───────────────────────────────────────────────────────────────── -->
+      <div v-if="authState === 'forgot'" class="animate-fade-in">
+        <form @submit.prevent="handleForgotPassword" class="space-y-5">
+          <div class="text-center mb-6">
+            <p class="text-sm text-gray-400">Enter your email and we'll send you a secure link to reset your security key.</p>
+          </div>
+
+          <div>
+            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Email Address</label>
+            <input 
+              v-model="resetEmail" 
+              type="email" 
+              required 
+              class="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white font-medium focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner placeholder-gray-600"
+              placeholder="ceo@brand.com"
+            />
+          </div>
+
+          <div class="pt-2 space-y-4">
+            <button 
+              type="submit" 
+              :disabled="loading"
+              class="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-800 disabled:text-gray-500 text-white font-bold py-3.5 rounded-xl transition-all shadow-[0_10px_25px_rgba(79,70,229,0.2)] hover:shadow-[0_15px_30px_rgba(79,70,229,0.3)] uppercase tracking-wider text-sm flex justify-center items-center gap-2"
+            >
+              <svg v-if="loading" class="animate-spin w-4 h-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              {{ loading ? 'Processing...' : 'Send Reset Link' }}
+            </button>
+            
+            <button 
+              type="button" 
+              @click="authState = 'login'; error = null; successMsg = null;"
+              class="w-full bg-transparent hover:bg-gray-800 text-gray-400 font-bold py-3.5 rounded-xl transition-all uppercase tracking-wider text-xs"
+            >
+              ← Back to Login
+            </button>
+          </div>
+        </form>
       </div>
       
     </div>
@@ -203,29 +229,21 @@ const router = useRouter();
 const authStore = useAuthStore();
 
 // UI State
+const authState = ref('login'); // 'login' or 'forgot'
 const authMethod = ref('email'); // 'email' or 'otp'
-const isLogin = ref(true); // For email tab (SignIn vs SignUp)
-const otpState = ref('request'); // For OTP tab ('request' vs 'verify')
+const isLogin = ref(true); 
+const otpState = ref('request'); 
 
 // Form Data
 const email = ref('');
 const password = ref('');
-const countryCode = ref('+91');
-const rawPhoneNumber = ref('');
+const otpEmail = ref('');
 const otpCode = ref('');
+const resetEmail = ref('');
 
 const loading = ref(false);
 const error = ref(null);
 const successMsg = ref(null);
-
-// Reset forms cleanly when switching tabs or modes
-watch([authMethod, isLogin, otpState], () => {
-  error.value = null;
-  successMsg.value = null;
-  if (authMethod.value === 'email') {
-    otpCode.value = '';
-  }
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Google Login Handler
@@ -288,33 +306,25 @@ const handleEmailAuth = async () => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Mobile OTP Handlers
+// Resend Email OTP Handlers
 // ─────────────────────────────────────────────────────────────────────────────
 const handleOtpRequest = async () => {
   loading.value = true;
   error.value = null;
   successMsg.value = null;
   
-  // EXTRA SECURE PARSING: 
-  // 1. Extract only the '+' and numbers from countryCode
-  const safeCountry = countryCode.value.replace(/[^\d+]/g, '');
-  // 2. Extract only numbers from the raw input
-  const safeNumber = rawPhoneNumber.value.replace(/\D/g, ''); 
-  // 3. Combine perfectly into E.164 format (e.g., +919861105106)
-  const fullPhoneNumber = `${safeCountry}${safeNumber}`;
-  
   try {
     const res = await fetch('/api/v2/auth/otp/request', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phoneNumber: fullPhoneNumber })
+      body: JSON.stringify({ email: otpEmail.value })
     });
     
     const data = await res.json();
     
     if (res.ok) {
-      successMsg.value = 'Access code dispatched. Please check your messages.';
-      otpState.value = 'verify'; // Instantly switch the UI to the 6-digit input
+      successMsg.value = 'Access code dispatched. Please check your inbox.';
+      otpState.value = 'verify';
     } else {
       error.value = data.message || 'Failed to dispatch access code.';
     }
@@ -329,14 +339,11 @@ const handleOtpVerify = async () => {
   loading.value = true;
   error.value = null;
   
-  const cleanNumber = rawPhoneNumber.value.replace(/\s+/g, '');
-  const fullPhoneNumber = `${countryCode.value}${cleanNumber}`;
-  
   try {
     const res = await fetch('/api/v2/auth/otp/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phoneNumber: fullPhoneNumber, code: otpCode.value })
+      body: JSON.stringify({ email: otpEmail.value, code: otpCode.value })
     });
     
     const data = await res.json();
@@ -346,7 +353,37 @@ const handleOtpVerify = async () => {
       router.push('/dashboard');
     } else {
       error.value = data.message || 'Invalid access code. Please try again.';
-      otpCode.value = ''; // Clear the input field for them to retry
+      otpCode.value = '';
+    }
+  } catch (e) {
+    error.value = 'Neural connection failed. Please ensure the backend server is running.';
+  } finally {
+    loading.value = false;
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Forgot Password Handler
+// ─────────────────────────────────────────────────────────────────────────────
+const handleForgotPassword = async () => {
+  loading.value = true;
+  error.value = null;
+  successMsg.value = null;
+  
+  try {
+    const res = await fetch('/api/v2/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: resetEmail.value })
+    });
+    
+    // We don't need to parse data on success for security (prevents user enumeration)
+    if (res.ok) {
+      successMsg.value = 'If an account exists, a reset link has been sent.';
+      resetEmail.value = ''; // clear input
+    } else {
+      const data = await res.json();
+      error.value = data.message || 'Failed to process request.';
     }
   } catch (e) {
     error.value = 'Neural connection failed. Please ensure the backend server is running.';
