@@ -4,18 +4,32 @@ const prisma = new PrismaClient();
 
 export const requireBrandAccess = async (req, res, next) => {
   try {
-    // Brand ID can be in params or body depending on the request
-    const brandId = req.params.brandId || req.body.brandId;
+    // Prioritize URL path parameter over body to prevent body-override spoofing
+    const rawBrandId = req.params?.brandId || req.body?.brandId;
+    const brandId = typeof rawBrandId === 'string' ? rawBrandId.trim() : '';
 
     if (!brandId) {
-      return res.status(400).json({ success: false, error: 'VALIDATION_ERROR', message: 'Brand ID is required' });
+      return res.status(400).json({
+        success: false,
+        error: 'VALIDATION_ERROR',
+        message: 'Valid Brand ID is required'
+      });
     }
 
-    if (!req.user) {
-      return res.status(401).json({ success: false, error: 'UNAUTHENTICATED', message: 'Must be authenticated to access brand resources' });
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({
+        success: false,
+        error: 'UNAUTHENTICATED',
+        message: 'Must be authenticated to access brand resources'
+      });
     }
 
-    // Check if user is the owner or a member
+    // Fast-path: If a parent router already verified this exact brandId for this request, skip the second DB query
+    if (req.brand && req.brand.id === brandId) {
+      return next();
+    }
+
+    // Verify that the authenticated user is the brand owner or an authorized member
     const brand = await prisma.brand.findFirst({
       where: {
         id: brandId,
@@ -27,13 +41,21 @@ export const requireBrandAccess = async (req, res, next) => {
     });
 
     if (!brand) {
-      return res.status(403).json({ success: false, error: 'FORBIDDEN', message: 'You do not have permission to access this brand' });
+      return res.status(403).json({
+        success: false,
+        error: 'FORBIDDEN',
+        message: 'Access denied: You do not have permission to access this brand'
+      });
     }
 
     req.brand = brand;
     next();
   } catch (error) {
     console.error('[Klarix API] Brand Auth Error:', error);
-    return res.status(500).json({ success: false, error: 'INTERNAL_ERROR', message: 'Error verifying brand access' });
+    return res.status(500).json({
+      success: false,
+      error: 'INTERNAL_ERROR',
+      message: 'Error verifying brand access'
+    });
   }
 };
