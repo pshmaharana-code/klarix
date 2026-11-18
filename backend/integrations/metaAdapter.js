@@ -116,16 +116,44 @@ async function fetchProfile(accessToken) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 3 exports
 // ─────────────────────────────────────────────────────────────────────────────
-async function fetchUserMedia(accessToken, igUserId, { limit = 25, after = null } = {}) {
+async function fetchUserMedia(accessToken, igUserId, { limit = 100 } = {}) {
   const fields = [
     'id', 'caption', 'media_type', 'media_product_type', 'permalink',
     'timestamp', 'thumbnail_url', 'media_url', 'children{id,media_type,media_url}',
   ].join(',');
 
-  const query = { fields, limit: Math.min(limit, 100) };
-  if (after) query.after = after;
-  const data = await graphGet(`/${igUserId}/media`, accessToken, query);
-  return { items: (data.data || []).map(_normaliseMediaItem), nextCursor: data.paging?.cursors?.after ?? null };
+  let allItems = [];
+  let currentAfter = null;
+  let hasNextPage = true;
+
+  console.log(`[metaAdapter] Starting full catalogue sync for ${igUserId}...`);
+
+  while (hasNextPage) {
+    const query = { fields, limit };
+    if (currentAfter) query.after = currentAfter;
+
+    try {
+      const data = await graphGet(`/${igUserId}/media`, accessToken, query);
+      const batchItems = (data.data || []).map(_normaliseMediaItem);
+      allItems = allItems.concat(batchItems);
+
+      currentAfter = data.paging?.cursors?.after ?? null;
+      hasNextPage = !!currentAfter;
+
+      console.log(`[metaAdapter] Fetched batch of ${batchItems.length} posts. Total so far: ${allItems.length}. Next cursor: ${currentAfter ? 'YES' : 'NO'}`);
+
+      // Small delay to respect Meta API rate limits during pagination
+      if (hasNextPage) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    } catch (error) {
+      console.error(`[metaAdapter] Pagination stopped due to error:`, error.message);
+      hasNextPage = false; // Stop the loop but return what we have so far
+    }
+  }
+
+  console.log(`[metaAdapter] Sync complete. Retrieved ${allItems.length} total posts.`);
+  return { items: allItems, nextCursor: null };
 }
 
 async function fetchMediaDetail(accessToken, mediaId) {

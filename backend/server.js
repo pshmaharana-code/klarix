@@ -25,19 +25,38 @@ const PORT = process.env.PORT || 3001
 // Hide Express server signature from response headers
 app.disable('x-powered-by')
 
-// Strict CORS allowlist supporting local dev and configured tunnel/production URL
+// Normalize configured origins (strip trailing slashes)
 const allowedOrigins = [
   'http://localhost:5173',
-  process.env.FRONTEND_URL
+  'http://127.0.0.1:5173',
+  process.env.FRONTEND_URL?.replace(/\/$/, '')
 ].filter(Boolean)
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true
+  const normalized = origin.replace(/\/$/, '')
+  if (allowedOrigins.includes(normalized)) return true
+
+  // Allow active ngrok tunnels during development
+  if (process.env.NODE_ENV !== 'production') {
+    if (
+      normalized.endsWith('.ngrok-free.dev') ||
+      normalized.endsWith('.ngrok-free.app') ||
+      normalized.endsWith('.ngrok.io')
+    ) {
+      return true
+    }
+  }
+  return false
+}
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow same-origin/server-to-server requests or explicitly allowed origins
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true)
     } else {
-      callback(new Error('Not allowed by CORS'))
+      console.warn(`[Klarix CORS] Blocked request from unauthorized origin: ${origin}`)
+      callback(null, false)
     }
   },
   credentials: true

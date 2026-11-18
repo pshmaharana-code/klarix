@@ -350,8 +350,8 @@ export async function processJob(job, token) {
         state: willRetry ? 'RETRY_PENDING' : 'FAILED',
         completedAt: willRetry ? null : new Date(),
         error: { code: error.code || 'PROCESSING_FAILED', details: error.message },
-        progressStep: willRetry ? `Retry pending` : 'Failed',
-        progressMessage: willRetry ? 'Temporary error, retrying shortly...' : 'Failed permanently.',
+        progressStep: willRetry ? `Retry pending (Attempt ${currentAttempt}/${maxAttempts})` : 'Failed',
+        progressMessage: willRetry ? 'Rate limit hit or temporary error, retrying shortly...' : 'Failed permanently.',
         logs: { create: { event: 'PROCESSING_FAILED', level: 'ERROR', context: { code: error.code || 'PROCESSING_FAILED', msg: error.message } } }
       }
     });
@@ -361,14 +361,21 @@ export async function processJob(job, token) {
       if (parentJob) await updateSyncProgress(parentJob.parentJobId ? parentJob.parentJobId : dbJob.parentJobId).catch(() => { });
     }
 
-    const retryAfterSec = parseFloat(error.retryAfter) || (willRetry ? 15 : 0);
-    if (willRetry && retryAfterSec > 0) {
-      console.log(`[Worker] Delaying retry for ${retryAfterSec}s...`);
-      await job.moveToDelayed(Date.now() + Math.ceil(retryAfterSec * 1000), workerToken);
-      throw new DelayedError();
-    }
     if (!willRetry) throw new UnrecoverableError(error.message);
-    throw error;
+
+    // If it's a 503 or Rate Limit, enforce a strict exponential backoff
+    let delayMs = 15000; // Base delay of 15 seconds
+    if (error.message.includes('503') || error.message.includes('Rate Limit') || error.message.includes('high demand')) {
+      // Exponential backoff: 30s, 60s, 120s...
+      delayMs = 30000 * Math.pow(2, job.attemptsMade);
+      console.log(`[Worker] API Rate Limit hit. Applying exponential backoff delay of ${delayMs / 1000}s...`);
+    } else {
+      delayMs = parseFloat(error.retryAfter) * 1000 || 15000;
+      console.log(`[Worker] Delaying retry for ${delayMs / 1000}s...`);
+    }
+
+    await job.moveToDelayed(Date.now() + delayMs, workerToken);
+    throw new DelayedError();
   }
 }
 
