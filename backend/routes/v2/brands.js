@@ -36,7 +36,7 @@ router.get('/', requireAuth, async (req, res) => {
 router.post('/', requireAuth, async (req, res) => {
   try {
     const { name, positioning, audience, goals, voiceStyleInputs } = req.body;
-    
+
     if (!name) {
       return res.status(400).json({ success: false, error: 'VALIDATION_ERROR', message: 'Brand name is required' });
     }
@@ -127,6 +127,40 @@ router.get('/:brandId/analytics/overview', requireAuth, requireBrandAccess, asyn
   } catch (error) {
     console.error('[Klarix API] Analytics Overview Error:', error);
     res.status(500).json({ success: false, error: 'INTERNAL_ERROR', message: 'Could not fetch analytics overview' });
+  }
+});
+
+const createBrandSchema = z.object({
+  name: z.string().trim().min(1, 'Brand name is required').max(120),
+  positioning: z.string().trim().max(1000).optional().nullable(),
+  audience: z.string().trim().max(1000).optional().nullable(),
+  goals: z.string().trim().max(1000).optional().nullable(),
+  voiceStyleInputs: z.string().trim().max(1000).optional().nullable()
+});
+
+// Create a new brand
+router.post('/', requireAuth, async (req, res) => {
+  try {
+    const parsed = createBrandSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'VALIDATION_ERROR',
+        message: parsed.error.issues[0].message
+      });
+    }
+
+    const brand = await prisma.brand.create({
+      data: {
+        ...parsed.data,
+        ownerUserId: req.user.id
+      }
+    });
+
+    res.status(201).json({ success: true, data: { brand } });
+  } catch (error) {
+    console.error('[Klarix API] Create Brand Error:', error);
+    res.status(500).json({ success: false, error: 'INTERNAL_ERROR', message: 'Could not create brand' });
   }
 });
 
