@@ -54,7 +54,7 @@
             alt="Content Thumbnail" 
             class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
           />
-          <div v-else class="text-gray-600">No Media</div>
+          <div v-else class="text-gray-500 text-sm">No Thumbnail Available</div>
           
           <div class="absolute top-2 right-2 bg-gray-900/80 backdrop-blur-sm px-2 py-1 rounded text-xs font-semibold uppercase">
             {{ item.type }}
@@ -65,30 +65,39 @@
         <div class="p-4 flex-1 flex flex-col">
           <div class="text-xs text-gray-400 mb-2">{{ formatDate(item.publishedAt) }}</div>
           <p class="text-sm text-gray-200 line-clamp-2 mb-4 flex-1">
-            {{ item.caption || 'No caption' }}
+            {{ item.caption || 'No caption provided' }}
           </p>
           
-          <!-- Metrics -->
-          <div v-if="getLatestMetrics(item)" class="grid grid-cols-3 gap-2 text-center pt-3 border-t border-gray-700">
-            <div v-if="getLatestMetrics(item).reach !== null" class="flex flex-col">
-              <span class="text-lg font-bold">{{ formatNumber(getLatestMetrics(item).reach) }}</span>
-              <span class="text-[10px] text-gray-500 uppercase tracking-wider">Reach</span>
+          <!-- Metrics Wrapper -->
+          <div class="pt-3 border-t border-gray-700 h-14 flex items-center justify-center">
+            <!-- Has Metrics -->
+            <div v-if="getLatestMetrics(item)" class="grid grid-cols-3 gap-4 w-full text-center">
+              <div v-if="getLatestMetrics(item).reach !== null" class="flex flex-col">
+                <span class="text-lg font-bold">{{ formatNumber(getLatestMetrics(item).reach) }}</span>
+                <span class="text-[10px] text-gray-500 uppercase tracking-wider">Reach</span>
+              </div>
+              <div v-if="getLatestMetrics(item).likes !== null" class="flex flex-col">
+                <span class="text-lg font-bold">{{ formatNumber(getLatestMetrics(item).likes) }}</span>
+                <span class="text-[10px] text-gray-500 uppercase tracking-wider">Likes</span>
+              </div>
+              <div v-if="getLatestMetrics(item).comments !== null" class="flex flex-col">
+                <span class="text-lg font-bold">{{ formatNumber(getLatestMetrics(item).comments) }}</span>
+                <span class="text-[10px] text-gray-500 uppercase tracking-wider">Comments</span>
+              </div>
             </div>
-            <div v-if="getLatestMetrics(item).likes !== null" class="flex flex-col">
-              <span class="text-lg font-bold">{{ formatNumber(getLatestMetrics(item).likes) }}</span>
-              <span class="text-[10px] text-gray-500 uppercase tracking-wider">Likes</span>
-            </div>
-            <div v-if="getLatestMetrics(item).comments !== null" class="flex flex-col">
-              <span class="text-lg font-bold">{{ formatNumber(getLatestMetrics(item).comments) }}</span>
-              <span class="text-[10px] text-gray-500 uppercase tracking-wider">Comments</span>
+            
+            <!-- No Metrics Fallback -->
+            <div v-else class="text-xs text-gray-500 italic">
+              Metrics unavailable (Pre-business account)
             </div>
           </div>
+
         </div>
       </router-link>
     </div>
 
     <!-- Pagination -->
-    <div v-if="hasMore" class="flex justify-center pt-4">
+    <div v-if="hasMore" class="flex justify-center pt-4 pb-8">
       <button 
         @click="loadMore" 
         :disabled="loadingMore"
@@ -176,15 +185,23 @@ const loadMore = () => {
 const getThumbnail = (item) => {
   if (!item.media || item.media.length === 0) return null;
   const media = item.media[0];
+  
+  // Safely extract the first valid image URL available
   if (item.type === 'VIDEO' || item.type === 'REEL') {
-    return media.thumbnailUrl || null;
+    return media.thumbnailUrl || media.sourceUrl || null;
   }
-  return media.thumbnailUrl || media.sourceUrl;
+  return media.sourceUrl || media.thumbnailUrl || null;
 };
 
 const getLatestMetrics = (item) => {
   if (!item.metricSnapshots || item.metricSnapshots.length === 0) return null;
-  return item.metricSnapshots[0];
+  
+  // Ensure the metrics actually have numerical data, not just empty shells
+  const snapshot = item.metricSnapshots[0];
+  if (snapshot.reach === null && snapshot.likes === null && snapshot.comments === null) {
+    return null;
+  }
+  return snapshot;
 };
 
 const formatDate = (dateString) => {
