@@ -79,7 +79,7 @@ let pollInterval = null
 
 const fetchJobStatus = async () => {
   try {
-    const response = await fetch(`/api/v2/brands/${props.brandId}/jobs/${props.jobId}`)
+    const response = await fetch(`/api/v2/brands/${props.brandId}/jobs/${props.jobId}`, { credentials: 'include' })
     if (!response.ok) throw new Error(`Job status request failed (${response.status})`)
     const data = await response.json()
 
