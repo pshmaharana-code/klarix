@@ -57,7 +57,8 @@ export async function processJob(job, token) {
   console.log(`[Worker] 6. Job Type is: [${dbJob.type}]. Starting execution...`);
   await prisma.jobLog.create({ data: { jobId, event: 'PROCESSING_START', level: 'INFO' } });
 
-  if (dbJob.type === 'SYNC_ACCOUNT') {
+  try {
+    if (dbJob.type === 'SYNC_ACCOUNT') {
     await updateProgress(jobId, 30, 'Authenticating', 'Authenticating with Instagram...');
     const credential = await prisma.oAuthCredential.findUnique({ where: { id: input?.credentialId } });
     if (!credential || credential.consumedAt || credential.expiresAt <= new Date()) {

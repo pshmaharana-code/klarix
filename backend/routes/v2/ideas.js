@@ -120,7 +120,20 @@ router.get('/:ideaId/scripts', requireAuth, async (req, res) => {
 router.post('/:ideaId/scripts/generate', requireAuth, async (req, res) => {
     try {
         const { ideaId } = req.params;
-        const { instruction } = req.body;
+        const rawInstruction = req.body?.instruction;
+
+        if (
+            rawInstruction !== undefined &&
+            rawInstruction !== null &&
+            (typeof rawInstruction !== 'string' || rawInstruction.trim().length > 1000)
+        ) {
+            return res.status(400).json({
+                success: false,
+                error: { code: 'VALIDATION_ERROR', message: 'Instruction must be a string under 1000 characters' }
+            });
+        }
+
+        const safeInstruction = rawInstruction ? rawInstruction.trim() : null;
 
         const idea = await getAuthorizedIdea(ideaId, req.user.id);
         if (!idea) {
@@ -135,7 +148,7 @@ router.post('/:ideaId/scripts/generate', requireAuth, async (req, res) => {
             type: 'GENERATE_SCRIPT',
             parentJobId: null,
             idempotencyKey: `script:${idea.id}:${Date.now()}`,
-            input: { contentIdeaId: idea.id, instruction }
+            input: { contentIdeaId: idea.id, instruction: safeInstruction }
         });
 
         res.status(202).json({

@@ -92,14 +92,7 @@ const authStore = useAuthStore();
 const router = useRouter();
 
 const logout = async () => {
-  try {
-    const res = await fetch('/api/v2/auth/logout', { method: 'POST' });
-    if (res.ok) {
-      authStore.clearAuth();
-      router.push('/login');
-    }
-  } catch (e) {
-    console.error('Failed to logout', e);
-  }
+  await authStore.logout();
+  router.push('/login');
 };
 </script>

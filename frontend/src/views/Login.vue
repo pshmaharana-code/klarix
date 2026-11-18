@@ -54,6 +54,7 @@
             <input 
               v-model="email" 
               type="email" 
+              maxlength="254"
               required 
               class="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white font-medium focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner placeholder-gray-600"
               placeholder="ceo@brand.com"
@@ -74,6 +75,7 @@
             <input 
               v-model="password" 
               type="password" 
+              maxlength="72"
               required 
               class="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white font-medium focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner"
               placeholder="••••••••"
@@ -129,6 +131,7 @@
               <input 
                 v-model="email" 
                 type="email" 
+                maxlength="254"
                 required 
                 class="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white font-medium focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner placeholder-gray-600"
                 placeholder="ceo@brand.com"
@@ -213,6 +216,8 @@
             <input 
               v-model="password" 
               type="password" 
+              minlength="6"
+              maxlength="72"
               required 
               class="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white font-medium focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner"
               placeholder="••••••••"
@@ -224,6 +229,8 @@
             <input 
               v-model="confirmPassword" 
               type="password" 
+              minlength="6"
+              maxlength="72"
               required 
               class="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white font-medium focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner"
               placeholder="••••••••"
@@ -263,6 +270,7 @@
             <input 
               v-model="email" 
               type="email" 
+              maxlength="254"
               required 
               class="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white font-medium focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner placeholder-gray-600"
               placeholder="ceo@brand.com"
@@ -348,6 +356,8 @@
             <input 
               v-model="password" 
               type="password" 
+              minlength="6"
+              maxlength="72"
               required 
               class="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white font-medium focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner"
               placeholder="••••••••"
@@ -359,6 +369,8 @@
             <input 
               v-model="confirmPassword" 
               type="password" 
+              minlength="6"
+              maxlength="72"
               required 
               class="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white font-medium focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner"
               placeholder="••••••••"
@@ -435,6 +447,7 @@ const handleGoogleLogin = async (response) => {
     const res = await fetch('/api/v2/auth/google', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ token: response.credential })
     });
     
@@ -464,6 +477,7 @@ const handleLogin = async () => {
     const res = await fetch('/api/v2/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ email: email.value, password: password.value })
     });
     
@@ -493,6 +507,7 @@ const handleRegisterSendOtp = async () => {
     const res = await fetch('/api/v2/auth/register/send-otp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ email: email.value })
     });
 
@@ -519,6 +534,7 @@ const handleRegisterVerifyOtp = async () => {
     const res = await fetch('/api/v2/auth/register/verify-otp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ email: email.value, code: otpCode.value })
     });
 
@@ -553,6 +569,7 @@ const handleRegisterComplete = async () => {
     const res = await fetch('/api/v2/auth/register/complete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({
         email: email.value,
         password: password.value,
@@ -586,6 +603,7 @@ const handleForgotSendOtp = async () => {
     const res = await fetch('/api/v2/auth/forgot-password/send-otp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ email: email.value })
     });
 
@@ -612,6 +630,7 @@ const handleForgotVerifyOtp = async () => {
     const res = await fetch('/api/v2/auth/forgot-password/verify-otp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ email: email.value, code: otpCode.value })
     });
 
@@ -646,6 +665,7 @@ const handleForgotResetPassword = async () => {
     const res = await fetch('/api/v2/auth/forgot-password/reset', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({
         email: email.value,
         newPassword: password.value,
