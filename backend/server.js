@@ -25,6 +25,21 @@ const PORT = process.env.PORT || 3001
 // Hide Express server signature from response headers
 app.disable('x-powered-by')
 
+// Trust 1 hop reverse proxy (Nginx / Render / Cloudflare / ngrok) for accurate req.ip and secure cookies
+app.set('trust proxy', 1)
+
+// Enterprise HTTP Security Headers (Clickjacking, MIME-Sniffing, HSTS, Referrer)
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('X-Frame-Options', 'DENY')
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+  res.setHeader('X-Permitted-Cross-Domain-Policies', 'none')
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+  }
+  next()
+})
+
 // Normalize configured origins (strip trailing slashes)
 const allowedOrigins = [
   'http://localhost:5173',
