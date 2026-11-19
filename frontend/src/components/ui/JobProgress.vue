@@ -1,74 +1,126 @@
 <template>
-  <div class="job-progress-container p-6 bg-white rounded-lg shadow-sm border border-gray-100">
-    <div class="flex justify-between items-center mb-4">
-      <h3 class="text-lg font-semibold text-gray-900">Connection Status</h3>
-      <span 
-        class="px-3 py-1 rounded-full text-sm font-medium"
-        :class="{
-          'bg-yellow-100 text-yellow-800': ['CREATED', 'QUEUED'].includes(jobState),
-          'bg-blue-100 text-blue-800': jobState === 'PROCESSING',
-          'bg-green-100 text-green-800': jobState === 'COMPLETED',
-          'bg-red-100 text-red-800': jobState === 'FAILED',
-        }"
-      >
-        {{ jobState }}
+  <div class="p-6 bg-canvas border border-border-hairline rounded-[2px] space-y-5">
+    <!-- Top Status Row -->
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <div class="klx-mono-label text-ink-muted">Ingestion Worker</div>
+        <h3 class="mt-1 font-display font-bold text-lg text-ink">
+          Synchronizing Instagram Telemetry
+        </h3>
+      </div>
+
+      <span class="klx-badge border" :class="stateBadgeClass">
+        <span
+          v-if="!['COMPLETED', 'FAILED', 'CANCELLED'].includes(jobState)"
+          class="klx-pulse-square"
+          :class="jobState === 'RETRY_PENDING' ? '!bg-status-warning' : '!bg-ink'"
+        ></span>
+        <span>{{ jobState }}</span>
       </span>
     </div>
 
-    <!-- Progress Bar -->
-    <div class="w-full bg-gray-200 rounded-full h-2.5 mb-4">
-      <div 
-        class="h-2.5 rounded-full transition-all duration-500 ease-out"
-        :class="{
-          'bg-blue-600': jobState !== 'FAILED' && jobState !== 'COMPLETED',
-          'bg-green-600': jobState === 'COMPLETED',
-          'bg-red-600': jobState === 'FAILED'
-        }"
-        :style="{ width: `${progressPercent}%` }"
-      ></div>
+    <!-- Sharp Mechanical Progress Bar -->
+    <div class="space-y-2">
+      <div class="w-full h-2 bg-surface-subtle border border-border-hairline overflow-hidden rounded-[1px]">
+        <div
+          class="h-full transition-all duration-500 ease-out"
+          :class="progressBarClass"
+          :style="{ width: `${Math.max(4, progressPercent)}%` }"
+        ></div>
+      </div>
+
+      <div class="flex items-center justify-between text-xs font-mono">
+        <span class="text-ink-secondary font-medium">
+          {{
+            jobState === 'RETRY_PENDING'
+              ? 'High AI demand — automatically retrying shortly...'
+              : progressStep || 'Initializing connection...'
+          }}
+        </span>
+        <span class="klx-kpi font-bold text-ink">{{ progressPercent }}%</span>
+      </div>
+
+      <p v-if="progressMessage && jobState !== 'RETRY_PENDING'" class="text-xs text-ink-muted">
+        {{ progressMessage }}
+      </p>
     </div>
 
-    <div class="space-y-2">
-      <div class="flex justify-between text-sm text-gray-600">
-        <span class="font-medium">{{ progressStep || 'Initializing...' }}</span>
-        <span>{{ progressPercent }}%</span>
-      </div>
-      <p class="text-sm text-gray-500">{{ progressMessage }}</p>
+    <!-- Rate-Limit Backoff Calm Notice -->
+    <div
+      v-if="jobState === 'RETRY_PENDING'"
+      class="p-4 bg-status-warning-bg border border-status-warning/35 rounded-[2px] flex items-start gap-2.5 text-xs text-status-warning"
+    >
+      <Clock class="w-4 h-4 shrink-0 mt-0.5" :stroke-width="2" />
+      <span>
+        Your job is safely queued during a temporary rate-limit window and will resume automatically without losing progress.
+      </span>
     </div>
 
     <!-- Error Display -->
-    <div v-if="jobState === 'FAILED'" class="mt-4 p-4 bg-red-50 rounded border border-red-100">
-      <p class="text-sm text-red-700">
-        <strong>Error:</strong> {{ errorMessage || 'An unknown error occurred during connection.' }}
-      </p>
-      <button @click="$emit('retry')" class="mt-3 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm font-medium transition-colors">
-        Retry Connection
+    <div
+      v-if="jobState === 'FAILED' || jobState === 'CANCELLED'"
+      role="alert"
+      class="p-4 bg-status-negative-bg border border-status-negative/35 rounded-[2px] space-y-3"
+    >
+      <div class="flex items-start gap-2.5 text-sm text-status-negative font-medium">
+        <AlertCircle class="w-4 h-4 shrink-0 mt-0.5" :stroke-width="2" />
+        <span>{{ errorMessage || 'An unexpected error occurred during connection.' }}</span>
+      </div>
+
+      <button
+        type="button"
+        @click="$emit('retry')"
+        class="klx-btn-outline px-4 py-2 text-xs font-mono uppercase tracking-wider bg-surface"
+      >
+        <RotateCcw class="w-3.5 h-3.5" :stroke-width="1.75" />
+        <span>Retry Connection</span>
       </button>
     </div>
 
-    <!-- Success Message -->
-    <div v-if="jobState === 'COMPLETED'" class="mt-4 p-4 bg-green-50 rounded border border-green-100">
-      <p class="text-sm text-green-700">
-        Successfully linked to Instagram account: <strong>@{{ resultData?.username }}</strong>
-      </p>
-      <button @click="$emit('continue')" class="mt-3 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-medium transition-colors">
-        Continue to Dashboard
+    <!-- Success Display -->
+    <div
+      v-if="jobState === 'COMPLETED'"
+      role="status"
+      class="p-4 bg-status-positive-bg border border-status-positive/35 rounded-[2px] flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+    >
+      <div class="flex items-start gap-2.5 text-sm text-status-positive font-medium">
+        <CheckCircle2 class="w-4 h-4 shrink-0 mt-0.5" :stroke-width="2" />
+        <span>
+          Successfully linked Instagram account
+          <strong v-if="resultData?.username" class="font-mono">@{{ resultData.username }}</strong>.
+        </span>
+      </div>
+
+      <button
+        type="button"
+        @click="$emit('continue')"
+        class="klx-btn-volt px-4 py-2.5 text-xs font-mono uppercase tracking-wider shrink-0"
+      >
+        <span>Open Command Center</span>
+        <ArrowRight class="w-3.5 h-3.5" :stroke-width="2" />
       </button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import {
+  ArrowRight,
+  RotateCcw,
+  AlertCircle,
+  CheckCircle2,
+  Clock
+} from 'lucide-vue-next'
 
 const props = defineProps({
   jobId: { type: String, required: true },
   brandId: { type: String, required: true }
 })
 
-const emit = defineEmits(['retry', 'continue'])
+const emit = defineEmits(['retry', 'continue', 'status-change'])
 
-const jobState = ref('FETCHING')
+const jobState = ref('QUEUED')
 const progressPercent = ref(0)
 const progressStep = ref('')
 const progressMessage = ref('')
@@ -77,24 +129,54 @@ const resultData = ref(null)
 
 let pollInterval = null
 
+const stateBadgeClass = computed(() => {
+  if (jobState.value === 'COMPLETED') {
+    return 'bg-status-positive-bg border-status-positive/35 text-status-positive'
+  }
+  if (jobState.value === 'FAILED' || jobState.value === 'CANCELLED') {
+    return 'bg-status-negative-bg border-status-negative/35 text-status-negative'
+  }
+  if (jobState.value === 'RETRY_PENDING') {
+    return 'bg-status-warning-bg border-status-warning/40 text-status-warning'
+  }
+  if (jobState.value === 'PROCESSING') {
+    return 'bg-volt border-ink text-ink'
+  }
+  return 'bg-surface border-border-hairline text-ink-secondary'
+})
+
+const progressBarClass = computed(() => {
+  if (jobState.value === 'COMPLETED') return 'bg-status-positive'
+  if (jobState.value === 'FAILED' || jobState.value === 'CANCELLED') return 'bg-status-negative'
+  if (jobState.value === 'RETRY_PENDING') return 'bg-status-warning'
+  return 'bg-ink'
+})
+
 const fetchJobStatus = async () => {
   try {
-    const response = await fetch(`/api/v2/brands/${props.brandId}/jobs/${props.jobId}`, { credentials: 'include' })
+    const response = await fetch(`/api/v2/brands/${props.brandId}/jobs/${props.jobId}`, {
+      credentials: 'include'
+    })
     if (!response.ok) throw new Error(`Job status request failed (${response.status})`)
     const data = await response.json()
 
-    if (data.success && data.data.job) {
+    if (data.success && data.data?.job) {
       const job = data.data.job
       jobState.value = job.state
-      progressPercent.value = job.progressPercent
-      progressStep.value = job.progressStep
-      progressMessage.value = job.progressMessage
+      progressPercent.value = job.progressPercent || 0
+      progressStep.value = job.progressStep || ''
+      progressMessage.value = job.progressMessage || ''
+
+      emit('status-change', {
+        state: job.state,
+        progress: job.progressPercent || 0
+      })
 
       if (job.state === 'COMPLETED') {
         resultData.value = job.result
         stopPolling()
-      } else if (job.state === 'FAILED') {
-        errorMessage.value = job.error?.code || 'Failed processing job'
+      } else if (job.state === 'FAILED' || job.state === 'CANCELLED') {
+        errorMessage.value = job.error?.message || job.error?.code || 'Failed processing job'
         stopPolling()
       }
     }
@@ -104,7 +186,7 @@ const fetchJobStatus = async () => {
 }
 
 const startPolling = () => {
-  fetchJobStatus() // initial fetch
+  fetchJobStatus()
   pollInterval = setInterval(fetchJobStatus, 2000)
 }
 
