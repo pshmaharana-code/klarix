@@ -7,27 +7,43 @@ import AppShell from './components/layout/AppShell.vue'
 const route = useRoute()
 const authStore = useAuthStore()
 
-// Render the V2 workspace shell on protected routes, and plain view on /login
-const showWorkspaceShell = computed(() => Boolean(route.meta.requiresAuth) && authStore.isAuthenticated)
+// Render the V2 Daylight workspace shell on protected routes; plain views on / and /login
+const showWorkspaceShell = computed(
+  () => Boolean(route.meta.requiresAuth) && authStore.isAuthenticated
+)
 
-onMounted(async () => {
+// Never block public landing page render with an auth splash screen
+const showInitSplash = computed(
+  () => authStore.isInitializing && !route.meta.public
+)
+
+onMounted(() => {
   if (authStore.isInitializing) {
-    await authStore.checkSession()
+    authStore.checkSession()
   }
 })
 </script>
 
 <template>
   <div
-    v-if="authStore.isInitializing"
-    class="min-h-screen flex items-center justify-center bg-gray-950 text-white font-sans"
+    v-if="showInitSplash"
+    class="min-h-screen flex flex-col items-center justify-center gap-4 bg-canvas text-ink font-sans"
   >
-    <div class="animate-pulse font-medium tracking-wide text-gray-400">
-      Initializing Klarix V2...
+    <div class="flex items-center gap-3">
+      <img
+        src="/brand/logo-volt.svg"
+        alt="Klarix"
+        class="w-7 h-7 rounded-[2px] border border-ink"
+      />
+      <span class="font-display font-extrabold text-xl tracking-tight">KLARIX</span>
+    </div>
+    <div class="flex items-center gap-2.5 text-ink-muted klx-mono-label">
+      <span class="klx-pulse-square"></span>
+      <span>Verifying Workspace Session</span>
     </div>
   </div>
 
-  <div v-else class="min-h-screen bg-gray-950 text-white font-sans">
+  <div v-else class="min-h-screen bg-canvas text-ink font-sans">
     <AppShell v-if="showWorkspaceShell" />
     <router-view v-else />
   </div>
