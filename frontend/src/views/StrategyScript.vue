@@ -1,252 +1,465 @@
 <template>
-  <div class="w-full min-w-0 max-w-4xl mx-auto space-y-8 pb-20">
-    <!-- Header Navigation -->
-    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-800 pb-4">
-      <div class="flex items-center space-x-4">
-        <router-link :to="`/strategy/${strategyId}/ideas`" class="text-gray-400 hover:text-white transition-colors flex items-center space-x-2">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
-          </svg>
-          <span>Back to Ideation Board</span>
-        </router-link>
-      </div>
-      <div class="flex items-center gap-3">
-        <div v-if="script" class="text-xs bg-gray-800 px-3 py-1 rounded-full text-gray-400 uppercase tracking-wide">
-          Script Version {{ script.version }}
-        </div>
-        <button 
-          v-if="script" 
-          @click="publishScript" 
-          :disabled="publishing" 
-          class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
+  <div class="w-full min-w-0 max-w-4xl mx-auto space-y-6 pb-20">
+    <!-- Top Utility Bar -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border-hairline">
+      <router-link
+        :to="`/strategy/${strategyId}/ideas`"
+        class="inline-flex items-center gap-2 klx-mono-label text-ink-muted hover:text-ink transition-colors"
+      >
+        <ArrowLeft class="w-3.5 h-3.5" :stroke-width="2" />
+        <span>Back to Ideation Board</span>
+      </router-link>
+
+      <div v-if="script" class="flex flex-wrap items-center gap-2.5">
+        <!-- Version Switcher (Shown when multiple script revisions exist) -->
+        <select
+          v-if="allScripts.length > 1"
+          v-model="selectedScriptIndex"
+          aria-label="Select script version"
+          class="klx-input w-auto px-3 py-2 text-xs font-mono font-semibold uppercase"
         >
-          {{ publishing ? 'Archiving...' : 'Mark as Published ✓' }}
+          <option v-for="(s, idx) in allScripts" :key="s.id || idx" :value="idx">
+            Version {{ s.version || allScripts.length - idx }}
+          </option>
+        </select>
+        <span
+          v-else
+          class="klx-badge bg-surface border border-border-hairline text-ink py-2 px-3"
+        >
+          VERSION {{ script.version || 1 }}
+        </span>
+
+        <!-- One-Click Copy for Notion (Clean Markdown) -->
+        <button
+          type="button"
+          @click="copyScriptMarkdown"
+          class="klx-btn-outline px-3.5 py-2 text-xs font-mono uppercase tracking-wider bg-surface"
+        >
+          <Check v-if="copied" class="w-3.5 h-3.5 text-status-positive" :stroke-width="2.25" />
+          <Copy v-else class="w-3.5 h-3.5" :stroke-width="1.75" />
+          <span>{{ copied ? 'Copied for Notion' : 'Copy Markdown' }}</span>
+        </button>
+
+        <!-- Mark Published Action -->
+        <button
+          type="button"
+          @click="publishScript"
+          :disabled="publishing"
+          class="klx-btn-volt px-4 py-2 text-xs font-mono uppercase tracking-wider"
+        >
+          <span v-if="publishing" class="klx-pulse-square !bg-ink"></span>
+          <CheckCircle2 v-else class="w-3.5 h-3.5" :stroke-width="2" />
+          <span>{{ publishing ? 'Archiving...' : 'Mark Published' }}</span>
         </button>
       </div>
     </div>
 
-    <!-- Active Job Polling Message -->
-    <div v-if="jobMessage" class="p-4 bg-blue-900/30 border border-blue-800 rounded-xl flex items-center gap-4 text-blue-200 shadow-lg">
-      <svg class="animate-spin w-5 h-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-      </svg>
-      <span class="text-sm font-medium">{{ jobMessage }}</span>
+    <!-- Active Job Polling Banner -->
+    <div
+      v-if="jobMessage"
+      role="status"
+      class="p-4 border rounded-[2px] flex items-center gap-3 text-xs font-medium"
+      :class="
+        jobState === 'RETRY_PENDING'
+          ? 'bg-status-warning-bg border-status-warning/40 text-status-warning'
+          : 'bg-volt-tint border-ink text-ink'
+      "
+    >
+      <span
+        class="klx-pulse-square shrink-0"
+        :class="jobState === 'RETRY_PENDING' ? '!bg-status-warning' : '!bg-ink'"
+      ></span>
+      <span>{{ jobMessage }}</span>
     </div>
 
-    <!-- Error State -->
-    <div v-if="error" class="p-6 bg-red-900/50 border border-red-500/50 rounded-xl text-center">
-      <p class="text-red-400">{{ error }}</p>
-      <button @click="loadScript" class="mt-4 px-4 py-2 bg-red-800 hover:bg-red-700 rounded-lg text-white text-sm transition-colors">Try Again</button>
+    <!-- Inline Error State -->
+    <div
+      v-if="error"
+      role="alert"
+      class="p-4 bg-status-negative-bg border border-status-negative/35 rounded-[2px] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm text-status-negative font-medium"
+    >
+      <div class="flex items-center gap-2.5">
+        <AlertCircle class="w-4 h-4 shrink-0" :stroke-width="2" />
+        <span>{{ error }}</span>
+      </div>
+      <button
+        type="button"
+        @click="loadScript(false)"
+        class="klx-btn-outline px-3 py-1.5 text-xs font-mono uppercase tracking-wider bg-surface shrink-0 self-start sm:self-auto"
+      >
+        Retry
+      </button>
     </div>
 
     <!-- Skeleton Loader -->
-    <div v-if="loading && !script" class="space-y-6 animate-pulse">
-      <div class="h-32 bg-gray-900 rounded-2xl border border-gray-800"></div>
-      <div class="h-48 bg-gray-900 rounded-2xl border border-gray-800"></div>
-      <div class="h-32 bg-gray-900 rounded-2xl border border-gray-800"></div>
+    <div v-if="loading && !script" class="space-y-5">
+      <div class="klx-card p-6 sm:p-8 space-y-3">
+        <div class="klx-skeleton h-3 w-40"></div>
+        <div class="klx-skeleton h-8 w-full"></div>
+        <div class="klx-skeleton h-6 w-2/3"></div>
+      </div>
+      <div class="klx-card p-6 sm:p-8 space-y-3">
+        <div class="klx-skeleton h-3 w-32"></div>
+        <div class="klx-skeleton h-32 w-full"></div>
+      </div>
     </div>
 
-    <!-- The Script Deck -->
-    <div v-else-if="script" class="space-y-6">
-      
-      <!-- HOOK -->
-      <div v-if="script.hook" class="p-6 sm:p-8 rounded-3xl bg-red-900/10 border border-red-900/50 shadow-sm relative overflow-hidden">
-        <div class="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
-        <div class="text-xs font-bold text-red-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-red-500"></span>
-          HOOK (CRITICAL RETENTION WINDOW)
+    <!-- ===================================================================
+         PRODUCTION SCRIPT SHEET
+         =================================================================== -->
+    <div v-else-if="script" class="space-y-5">
+      <!-- Top Production Spec Strip -->
+      <div class="klx-card px-5 py-3.5 bg-canvas flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-2.5">
+          <span class="klx-mono-label text-ink">Production Script Sheet</span>
+          <span
+            v-if="script.voiceCheck"
+            class="klx-badge bg-status-positive-bg border border-status-positive/30 text-status-positive"
+          >
+            VOICE: {{ script.voiceCheck }}
+          </span>
         </div>
-        <div class="text-xl sm:text-2xl font-bold text-white leading-relaxed whitespace-pre-wrap">{{ script.hook }}</div>
-      </div>
-
-      <!-- BODY -->
-      <div v-if="script.body" class="p-6 sm:p-8 rounded-3xl bg-gray-900 border border-gray-800 shadow-sm">
-        <div class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">BODY (NARRATIVE ENGAGEMENT)</div>
-        <div class="text-base sm:text-lg font-medium text-gray-300 leading-relaxed whitespace-pre-wrap">{{ script.body }}</div>
-      </div>
-
-      <!-- CTA -->
-      <div v-if="script.cta" class="p-6 sm:p-8 rounded-3xl bg-blue-900/10 border border-blue-900/50 shadow-sm relative overflow-hidden">
-        <div class="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
-        <div class="text-xs font-bold text-blue-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-blue-500"></span>
-          CALL TO ACTION (CONVERSION ENGINE)
-        </div>
-        <div class="text-lg sm:text-xl font-bold text-white leading-relaxed whitespace-pre-wrap">{{ script.cta }}</div>
-      </div>
-
-      <!-- B-ROLL & OVERLAYS -->
-      <div class="grid md:grid-cols-2 gap-6">
-        <div v-if="script.textOverlays && script.textOverlays.length" class="p-6 rounded-2xl bg-gray-950 border border-gray-800">
-          <div class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">TEXT OVERLAYS</div>
-          <ul class="list-disc list-inside text-sm text-gray-300 space-y-2">
-            <li v-for="(ov, idx) in script.textOverlays" :key="idx" class="leading-relaxed">{{ ov }}</li>
-          </ul>
-        </div>
-
-        <div v-if="script.bRollSuggestions && script.bRollSuggestions.length" class="p-6 rounded-2xl bg-gray-950 border border-gray-800">
-          <div class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">B-ROLL VISUALS</div>
-          <ul class="list-disc list-inside text-sm text-gray-300 space-y-2">
-            <li v-for="(broll, idx) in script.bRollSuggestions" :key="idx" class="leading-relaxed">{{ broll }}</li>
-          </ul>
-        </div>
-      </div>
-
-      <!-- NOTES & LENGTH -->
-      <div class="p-5 rounded-2xl bg-gray-900 border border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <span class="text-sm text-gray-400"><strong class="text-gray-200">Delivery Notes:</strong> {{ script.deliveryNotes }}</span>
-        <span class="font-bold text-xs shrink-0 bg-gray-800 text-gray-300 px-4 py-2 rounded-lg border border-gray-700 uppercase tracking-widest">
-          {{ script.estimatedLength || 'Unknown Length' }}
+        <span class="klx-badge bg-surface border border-border-hairline text-ink">
+          <Clock class="w-3 h-3" :stroke-width="2" />
+          <span>{{ script.estimatedLength || script.estimatedDuration || 'Standard Length' }}</span>
         </span>
       </div>
 
-      <!-- REFINEMENT ENGINE -->
-      <div class="mt-12 p-6 sm:p-8 bg-gray-900 border border-gray-700 rounded-3xl space-y-4 shadow-xl">
-        <h3 class="text-lg font-bold text-white">Refine this Script</h3>
-        <p class="text-sm text-gray-400">Want the hook to be punchier? Need it to be shorter? Give the AI feedback and generate a new version.</p>
-        <textarea 
-          v-model="feedbackInstruction"
-          rows="3"
-          placeholder="e.g. Make the hook more aggressive and shorten the body section."
-          class="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition-colors resize-none text-sm"
-        ></textarea>
-        <div class="flex justify-end">
-          <button 
-            @click="regenerateScript"
-            :disabled="generating || !feedbackInstruction.trim()"
-            class="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed rounded-lg text-sm font-bold text-white transition-colors"
-          >
-            Regenerate Script ⟳
-          </button>
+      <!-- 01 / HOOK -->
+      <section
+        v-if="script.hook"
+        class="klx-card p-6 sm:p-8 border-l-4 border-l-volt"
+      >
+        <div class="flex items-center justify-between mb-3">
+          <span class="klx-mono-label text-ink">01 / Hook (Critical Retention Window)</span>
+          <span class="klx-badge bg-volt text-ink border border-ink">0:00 – 0:03</span>
         </div>
+        <div class="font-display font-bold text-xl sm:text-2xl text-ink leading-snug whitespace-pre-wrap">
+          {{ script.hook }}
+        </div>
+      </section>
+
+      <!-- 02 / OPENING (Optional V2 Field) -->
+      <section v-if="script.opening" class="klx-card p-6 sm:p-8">
+        <div class="klx-mono-label text-ink-muted mb-3">02 / Opening Bridge</div>
+        <div class="text-base text-ink leading-relaxed whitespace-pre-wrap">
+          {{ script.opening }}
+        </div>
+      </section>
+
+      <!-- 03 / BODY -->
+      <section v-if="script.body" class="klx-card p-6 sm:p-8">
+        <div class="klx-mono-label text-ink-muted mb-3">
+          {{ script.opening ? '03' : '02' }} / Narrative Body
+        </div>
+        <div class="text-base text-ink leading-relaxed whitespace-pre-wrap">
+          {{ script.body }}
+        </div>
+      </section>
+
+      <!-- 04 / CALL TO ACTION -->
+      <section
+        v-if="script.cta"
+        class="klx-card p-6 sm:p-8 border-l-4 border-l-ink bg-canvas/40"
+      >
+        <div class="klx-mono-label text-ink-muted mb-3">
+          {{ script.opening ? '04' : '03' }} / Call to Action
+        </div>
+        <div class="font-display font-bold text-lg sm:text-xl text-ink leading-snug whitespace-pre-wrap">
+          {{ script.cta }}
+        </div>
+      </section>
+
+      <!-- TEXT OVERLAYS & B-ROLL / VISUAL DIRECTION -->
+      <div
+        v-if="
+          (script.textOverlays && script.textOverlays.length) ||
+          (script.bRollSuggestions && script.bRollSuggestions.length) ||
+          script.visualDirection
+        "
+        class="grid grid-cols-1 md:grid-cols-2 gap-5"
+      >
+        <section
+          v-if="script.textOverlays && script.textOverlays.length"
+          class="klx-card p-6 space-y-3"
+        >
+          <div class="klx-mono-label text-ink pb-2.5 border-b border-border-hairline">
+            On-Screen Text Overlays
+          </div>
+          <ul class="space-y-2 text-sm text-ink-secondary">
+            <li
+              v-for="(ov, idx) in script.textOverlays"
+              :key="idx"
+              class="flex items-start gap-2.5 leading-relaxed"
+            >
+              <span class="font-mono text-[10px] font-bold text-ink mt-1">0{{ idx + 1 }}</span>
+              <span>{{ ov }}</span>
+            </li>
+          </ul>
+        </section>
+
+        <section
+          v-if="(script.bRollSuggestions && script.bRollSuggestions.length) || script.visualDirection"
+          class="klx-card p-6 space-y-3"
+        >
+          <div class="klx-mono-label text-ink pb-2.5 border-b border-border-hairline">
+            Visual Direction &amp; B-Roll
+          </div>
+          <p v-if="script.visualDirection" class="text-sm text-ink-secondary leading-relaxed">
+            {{ script.visualDirection }}
+          </p>
+          <ul v-if="script.bRollSuggestions?.length" class="space-y-2 text-sm text-ink-secondary">
+            <li
+              v-for="(broll, idx) in script.bRollSuggestions"
+              :key="idx"
+              class="flex items-start gap-2.5 leading-relaxed"
+            >
+              <span class="w-1.5 h-1.5 bg-volt border border-ink shrink-0 mt-2"></span>
+              <span>{{ broll }}</span>
+            </li>
+          </ul>
+        </section>
       </div>
 
+      <!-- DELIVERY NOTES -->
+      <section
+        v-if="script.deliveryNotes"
+        class="klx-card p-5 bg-canvas flex flex-col sm:flex-row sm:items-start gap-3"
+      >
+        <span class="klx-badge bg-surface border border-border-hairline text-ink shrink-0">
+          DELIVERY NOTES
+        </span>
+        <p class="text-sm text-ink-secondary leading-relaxed">
+          {{ script.deliveryNotes }}
+        </p>
+      </section>
+
+      <!-- REFINEMENT ENGINE -->
+      <section class="klx-card p-6 sm:p-8 border-border-strong space-y-4">
+        <div>
+          <div class="klx-mono-label text-volt-ink mb-1">Revision Control</div>
+          <h2 class="font-display font-bold text-xl text-ink">Refine this Script</h2>
+          <p class="mt-1 text-xs text-ink-secondary">
+            Request a sharper hook, tighter pacing, or a different angle—Klarix will generate a new version while keeping your Brand Memory locked.
+          </p>
+        </div>
+
+        <textarea
+          v-model="feedbackInstruction"
+          rows="3"
+          placeholder="e.g. Make the hook sharper and trim the body to under 35 seconds."
+          class="klx-input px-4 py-3 text-sm resize-none placeholder:text-ink-muted/70"
+        ></textarea>
+
+        <div class="flex justify-end">
+          <button
+            type="button"
+            @click="regenerateScript"
+            :disabled="generating || !feedbackInstruction.trim()"
+            class="klx-btn-volt px-5 py-2.5 text-xs font-mono uppercase tracking-wider"
+          >
+            <span v-if="generating" class="klx-pulse-square !bg-ink"></span>
+            <RefreshCw v-else class="w-3.5 h-3.5" :stroke-width="2" />
+            <span>{{ generating ? 'Synthesizing Revision...' : 'Regenerate Script' }}</span>
+          </button>
+        </div>
+      </section>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { useAuthStore } from '../stores/auth';
-import { strategyApi } from '../services/strategyApi';
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
+import { strategyApi } from '../services/strategyApi'
+import {
+  ArrowLeft,
+  AlertCircle,
+  Check,
+  CheckCircle2,
+  Copy,
+  Clock,
+  RefreshCw
+} from 'lucide-vue-next'
 
-const route = useRoute();
-const router = useRouter();
-const authStore = useAuthStore();
-const strategyId = route.params.strategyId;
-const ideaId = route.params.ideaId;
+const route = useRoute()
+const router = useRouter()
+const authStore = useAuthStore()
+const strategyId = route.params.strategyId
+const ideaId = route.params.ideaId
 
-const script = ref(null);
-const loading = ref(true);
-const error = ref(null);
+const allScripts = ref([])
+const selectedScriptIndex = ref(0)
+const loading = ref(true)
+const error = ref(null)
 
-const feedbackInstruction = ref('');
-const generating = ref(false);
-const publishing = ref(false);
-const jobMessage = ref('');
-let pollInterval = null;
+const feedbackInstruction = ref('')
+const generating = ref(false)
+const publishing = ref(false)
+const copied = ref(false)
+const jobMessage = ref('')
+const jobState = ref(null)
+let pollInterval = null
+
+const script = computed(() => allScripts.value[selectedScriptIndex.value] || null)
+
+const stopPolling = () => {
+  if (pollInterval) {
+    clearInterval(pollInterval)
+    pollInterval = null
+  }
+}
 
 const ensureActiveBrand = async () => {
-  if (authStore.activeBrand) return true;
+  if (authStore.activeBrand) return true
   try {
-    const res = await fetch('/api/v2/brands', { credentials: 'include' });
-    const { data } = await res.json();
-    if (data && data.brands && data.brands.length > 0) {
-      authStore.setActiveBrand(data.brands[0]);
-      return true;
+    const res = await fetch('/api/v2/brands', { credentials: 'include' })
+    const { data } = await res.json()
+    if (data?.brands?.length > 0) {
+      authStore.setActiveBrand(data.brands[0])
+      return true
     }
   } catch (e) {
-    console.error("Failed to fetch brand context", e);
+    console.error('Failed to fetch brand context', e)
   }
-  return false;
-};
+  return false
+}
+
+const buildMarkdownExport = () => {
+  if (!script.value) return ''
+  const s = script.value
+  const lines = [
+    `# Production Script (Version ${s.version || 1})`,
+    s.estimatedLength || s.estimatedDuration
+      ? `**Estimated Length:** ${s.estimatedLength || s.estimatedDuration}`
+      : null,
+    '',
+    s.hook ? `## 01 / HOOK\n${s.hook}\n` : null,
+    s.opening ? `## 02 / OPENING\n${s.opening}\n` : null,
+    s.body ? `## BODY\n${s.body}\n` : null,
+    s.cta ? `## CALL TO ACTION\n${s.cta}\n` : null,
+    s.textOverlays?.length
+      ? `## TEXT OVERLAYS\n${s.textOverlays.map((ov) => `- ${ov}`).join('\n')}\n`
+      : null,
+    s.bRollSuggestions?.length
+      ? `## B-ROLL & VISUALS\n${s.bRollSuggestions.map((b) => `- ${b}`).join('\n')}\n`
+      : null,
+    s.visualDirection ? `## VISUAL DIRECTION\n${s.visualDirection}\n` : null,
+    s.deliveryNotes ? `## DELIVERY NOTES\n${s.deliveryNotes}\n` : null
+  ]
+  return lines.filter((l) => l !== null).join('\n').trim()
+}
+
+const copyScriptMarkdown = async () => {
+  try {
+    await navigator.clipboard.writeText(buildMarkdownExport())
+    copied.value = true
+    setTimeout(() => {
+      copied.value = false
+    }, 2200)
+  } catch {
+    error.value = 'Clipboard access denied by browser.'
+  }
+}
 
 const publishScript = async () => {
-  publishing.value = true;
+  publishing.value = true
+  error.value = null
   try {
-    await strategyApi.updateIdeaStatus(ideaId, 'PUBLISHED');
-    router.push(`/strategy/${strategyId}/ideas`);
+    await strategyApi.updateIdeaStatus(ideaId, 'PUBLISHED')
+    router.push(`/strategy/${strategyId}/ideas`)
   } catch (err) {
-    alert('Failed to publish script: ' + (err.message || 'Unknown error'));
-    publishing.value = false;
+    error.value = `Failed to archive script: ${err.message || 'Unknown error'}`
+    publishing.value = false
   }
-};
+}
 
 const loadScript = async (isSilentRefresh = false) => {
-  if (!isSilentRefresh) loading.value = true;
-  error.value = null;
+  if (!isSilentRefresh) loading.value = true
+  error.value = null
 
-  const hasBrand = await ensureActiveBrand();
-  if (!hasBrand) return;
+  const hasBrand = await ensureActiveBrand()
+  if (!hasBrand) {
+    loading.value = false
+    return
+  }
 
   try {
-    const response = await strategyApi.getScripts(ideaId);
-    
-    // If we have scripts, grab the newest one (index 0)
-    if (response.data.scripts && response.data.scripts.length > 0) {
-      script.value = response.data.scripts[0];
+    const response = await strategyApi.getScripts(ideaId)
+    const scripts = response.data?.scripts || []
+
+    if (scripts.length > 0) {
+      allScripts.value = scripts
+      selectedScriptIndex.value = 0
     } else {
-      // Auto-trigger the very first generation if no script exists
-      triggerScriptGeneration();
+      triggerScriptGeneration()
     }
   } catch (err) {
-    error.value = err.message || 'Failed to load the script.';
+    error.value = err.message || 'Failed to load the script.'
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
 
 const triggerScriptGeneration = async (instruction = null) => {
-  generating.value = true;
-  jobMessage.value = instruction ? 'Synthesizing script refinements...' : 'Drafting initial production script...';
-  error.value = null;
+  generating.value = true
+  jobState.value = 'QUEUED'
+  jobMessage.value = instruction
+    ? 'Synthesizing script refinements...'
+    : 'Drafting initial production script...'
+  error.value = null
 
   try {
-    const res = await strategyApi.generateScript(ideaId, instruction);
-    const jobId = res.data.job.id;
-    pollJob(jobId);
+    const res = await strategyApi.generateScript(ideaId, instruction)
+    const jobId = res.data.job.id
+    pollJob(jobId)
   } catch (err) {
-    error.value = 'Failed to trigger script generation.';
-    generating.value = false;
-    jobMessage.value = '';
+    error.value = err.message || 'Failed to trigger script generation.'
+    generating.value = false
+    jobMessage.value = ''
+    jobState.value = null
   }
-};
+}
 
 const regenerateScript = () => {
-  if (!feedbackInstruction.value.trim()) return;
-  triggerScriptGeneration(feedbackInstruction.value);
-};
+  if (!feedbackInstruction.value.trim()) return
+  triggerScriptGeneration(feedbackInstruction.value)
+}
 
 const pollJob = (jobId) => {
-  if (pollInterval) clearInterval(pollInterval);
-  
+  stopPolling()
+
   pollInterval = setInterval(async () => {
     try {
-      const res = await strategyApi.getJobStatus(authStore.activeBrand.id, jobId);
-      const job = res.data.job;
+      const res = await strategyApi.getJobStatus(authStore.activeBrand.id, jobId)
+      const job = res.data.job
+
+      jobState.value = job.state
+      if (job.state === 'RETRY_PENDING') {
+        jobMessage.value = 'High AI demand — automatically retrying script draft in ~30s...'
+      }
 
       if (job.state === 'COMPLETED') {
-        clearInterval(pollInterval);
-        jobMessage.value = '';
-        generating.value = false;
-        feedbackInstruction.value = ''; // Clear feedback box
-        
-        await loadScript(true); // Silently reload the script object
-      } else if (job.state === 'FAILED') {
-        clearInterval(pollInterval);
-        jobMessage.value = '';
-        generating.value = false;
-        error.value = 'AI failed to generate the script.';
+        stopPolling()
+        jobMessage.value = ''
+        jobState.value = null
+        generating.value = false
+        feedbackInstruction.value = ''
+        await loadScript(true)
+      } else if (job.state === 'FAILED' || job.state === 'CANCELLED') {
+        stopPolling()
+        jobMessage.value = ''
+        jobState.value = null
+        generating.value = false
+        error.value = job.error?.message || 'AI failed to generate the script.'
       }
     } catch (err) {
-      console.error('Polling error', err);
+      console.error('Polling error', err)
     }
-  }, 2000);
-};
+  }, 2000)
+}
 
-onMounted(() => {
-  loadScript();
-});
+onMounted(() => loadScript(false))
+onUnmounted(stopPolling)
 </script>
