@@ -6,7 +6,9 @@ import Connect from './views/Connect.vue'
 const routes = [
   {
     path: '/',
-    redirect: '/dashboard'
+    name: 'Landing',
+    component: () => import('./views/Landing.vue'),
+    meta: { public: true }
   },
   {
     path: '/login',
@@ -81,9 +83,9 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
-    // Catch-all fallback for any invalid or legacy URLs
+    // Catch-all fallback redirects unknown URLs to the public landing page
     path: '/:pathMatch(.*)*',
-    redirect: '/dashboard'
+    redirect: '/'
   }
 ]
 
@@ -104,7 +106,15 @@ export const router = createRouter({
 router.beforeEach(async (to) => {
   const authStore = useAuthStore()
 
-  // Always verify the HTTP-only session cookie with the backend on initial load
+  // Public landing route renders immediately while checking session silently in background
+  if (to.meta.public) {
+    if (authStore.isInitializing) {
+      authStore.checkSession()
+    }
+    return true
+  }
+
+  // Strictly verify the HTTP-only session cookie before entering protected or guest-only routes
   if (authStore.isInitializing) {
     await authStore.checkSession()
   }
